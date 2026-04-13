@@ -6,7 +6,6 @@ Handles CSI sequences, SS3 sequences, escape sequences, and bracketed paste mode
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Union
 
 ESCAPE = "\x1b"
 PASTE_START = "\x1b[200~"
@@ -20,7 +19,7 @@ class PasteEvent:
     paste: str
 
 
-InputEvent = Union[str, PasteEvent]
+InputEvent = str | PasteEvent
 
 
 def _is_csi_parameter_byte(byte: int) -> bool:

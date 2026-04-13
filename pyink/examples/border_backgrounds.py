@@ -1,5 +1,5 @@
 """Port of Ink's examples/border-backgrounds/border-backgrounds.tsx."""
-from pyink import component, render, Box, Text
+from pyink import Box, Text, component, render
 
 
 @component

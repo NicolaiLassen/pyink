@@ -29,52 +29,52 @@ Example:
 """
 
 # Render functions
-from pyink.app import render, render_async, render_to_string_sync, Instance
+from pyink.app import Instance, render, render_async, render_to_string_sync
 
 # Core component decorator
 from pyink.component import component
 
-# Components (matching Ink's exports)
-from pyink.vnode import Box, Text, Static, Transform, Spacer, Newline, VNode
+# DOM types
+from pyink.dom import DOMElement
 
 # Hooks (re-exported for convenience)
 from pyink.hooks import (
-    use_state,
-    use_effect,
-    use_ref,
-    use_memo,
-    use_callback,
-    use_input,
-    use_paste,
-    use_app,
-    use_focus,
-    use_focus_manager,
-    use_stdin,
-    use_stdout,
-    use_stderr,
-    use_window_size,
-    use_box_metrics,
-    use_cursor,
-    use_animation,
-    use_is_screen_reader_enabled,
-    # Types
-    WindowSize,
+    AnimationResult,
     BoxMetrics,
     CursorPosition,
-    AnimationResult,
+    # Types
+    WindowSize,
+    use_animation,
+    use_app,
+    use_box_metrics,
+    use_callback,
+    use_cursor,
+    use_effect,
+    use_focus,
+    use_focus_manager,
+    use_input,
+    use_is_screen_reader_enabled,
+    use_memo,
+    use_paste,
+    use_ref,
+    use_state,
+    use_stderr,
+    use_stdin,
+    use_stdout,
+    use_window_size,
 )
 
 # Input types
 from pyink.input.keys import Key
 
-# DOM types
-from pyink.dom import DOMElement
+# Kitty keyboard protocol
+from pyink.input.kitty_keyboard import KittyFlagName, kitty_flags, kitty_modifiers
 
 # Utilities
 from pyink.measure_element import measure_element
 
-# Kitty keyboard protocol
-from pyink.input.kitty_keyboard import kitty_flags, kitty_modifiers, KittyFlagName
+# Components (matching Ink's exports)
+from pyink.vnode import Box, Newline, Spacer, Static, Text, Transform, VNode
 
 __all__ = [
     # Render functions

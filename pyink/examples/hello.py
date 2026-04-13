@@ -1,5 +1,5 @@
 """Simple hello world example."""
-from pyink import component, render, Box, Text
+from pyink import Box, Text, component, render
 from pyink.hooks import use_app, use_input
 
 

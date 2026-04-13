@@ -1,6 +1,6 @@
 """Port of Ink's examples/counter/counter.tsx — auto-incrementing counter."""
-from pyink import component, render, Text
-from pyink.hooks import use_state, use_effect
+from pyink import Text, component, render
+from pyink.hooks import use_effect, use_state
 from pyink.hooks.context import get_current_app
 
 

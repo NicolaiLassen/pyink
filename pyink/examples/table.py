@@ -1,6 +1,7 @@
 """Port of Ink's examples/table/table.tsx — data table with columns."""
 import random
-from pyink import component, render, Box, Text
+
+from pyink import Box, Text, component, render
 
 
 def random_username():

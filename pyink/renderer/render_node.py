@@ -6,13 +6,14 @@ backgrounds, text with wrapping/truncation, and overflow clipping.
 from __future__ import annotations
 
 import shutil
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pyyoga as yoga
 
 from pyink.dom import DOMElement, TextNode, squash_text_nodes
 from pyink.layout.engine import _wrap_text, compute_layout, visible_width
-from pyink.renderer.ansi import strip_ansi, style_text
+from pyink.renderer.ansi import style_text
 from pyink.renderer.borders import render_border
 from pyink.renderer.output import Output
 
@@ -269,15 +270,18 @@ def _collect_text_styles(node: DOMElement) -> dict[str, Any]:
 
 def _wrap_text_with_mode(text: str, max_width: int, wrap_mode: str) -> str:
     """Wrap/truncate text matching Ink's wrapText."""
+    def _apply(fn, text, mw):
+        lines = text.split("\n")
+        return "\n".join(
+            fn(line, mw) if visible_width(line) > mw else line for line in lines
+        )
+
     if wrap_mode in ("truncate", "truncate-end", "truncate_end"):
-        lines = text.split("\n")
-        return "\n".join(_truncate(line, max_width) if visible_width(line) > max_width else line for line in lines)
+        return _apply(_truncate, text, max_width)
     elif wrap_mode in ("truncate-start", "truncate_start"):
-        lines = text.split("\n")
-        return "\n".join(_truncate_start(line, max_width) if visible_width(line) > max_width else line for line in lines)
+        return _apply(_truncate_start, text, max_width)
     elif wrap_mode in ("truncate-middle", "truncate_middle"):
-        lines = text.split("\n")
-        return "\n".join(_truncate_middle(line, max_width) if visible_width(line) > max_width else line for line in lines)
+        return _apply(_truncate_middle, text, max_width)
     elif wrap_mode == "hard":
         return "\n".join(_wrap_text_hard(text, max_width))
     else:

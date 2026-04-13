@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from pyink.hooks.context import get_current_app
 from pyink.hooks.use_effect import use_effect

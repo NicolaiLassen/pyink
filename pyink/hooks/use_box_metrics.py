@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from pyink.fiber import Ref
 from pyink.hooks.context import get_current_app

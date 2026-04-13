@@ -4,8 +4,6 @@ Measures the dimensions of a DOMElement after layout has been computed.
 """
 from __future__ import annotations
 
-from typing import Any
-
 from pyink.dom import DOMElement
 
 

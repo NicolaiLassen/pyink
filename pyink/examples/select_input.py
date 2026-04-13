@@ -1,6 +1,6 @@
 """Port of Ink's examples/select-input/select-input.tsx — arrow key selection."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input, use_app
+from pyink import Box, Text, component, render
+from pyink.hooks import use_app, use_input, use_state
 
 ITEMS = ["Red", "Green", "Blue", "Yellow", "Magenta", "Cyan"]
 

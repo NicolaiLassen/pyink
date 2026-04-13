@@ -1,6 +1,6 @@
 """Focus management example with visual indicators."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input, use_app, use_focus
+from pyink import Box, Text, component, render
+from pyink.hooks import use_app, use_focus, use_input
 
 
 @component

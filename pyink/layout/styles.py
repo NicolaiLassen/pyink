@@ -11,7 +11,6 @@ from typing import Any
 
 import pyyoga as yoga
 
-
 # Style props that are NOT yoga layout props (visual-only)
 NON_YOGA_PROPS = {
     # Text styling

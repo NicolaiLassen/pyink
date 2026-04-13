@@ -15,7 +15,9 @@ class FocusHandle:
     focus: Any  # callable
 
 
-def use_focus(*, auto_focus: bool = False, is_active: bool = True, id: str | None = None) -> FocusHandle:
+def use_focus(
+    *, auto_focus: bool = False, is_active: bool = True, id: str | None = None
+) -> FocusHandle:
     """Make a component focusable via Tab navigation."""
     app = get_current_app()
     import random

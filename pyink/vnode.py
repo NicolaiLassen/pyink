@@ -5,8 +5,9 @@ Spacer, Newline.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable, Union
+from typing import Any
 
 
 @dataclass
@@ -53,7 +54,12 @@ def Newline(count: int = 1) -> VNode:
     return _make_element("ink-text", "\n" * count)
 
 
-def Static(*children: VNode | str, items: list | None = None, render_item: Callable | None = None, **props: Any) -> VNode:
+def Static(
+    *children: VNode | str,
+    items: list | None = None,
+    render_item: Callable | None = None,
+    **props: Any,
+) -> VNode:
     """Render permanent output that doesn't re-render. Matches Ink's <Static>.
 
     Can use items + render_item pattern (like Ink) or direct children.
@@ -65,7 +71,11 @@ def Static(*children: VNode | str, items: list | None = None, render_item: Calla
     return _make_element("ink-box", *children, **props)
 
 
-def Transform(*children: VNode | str, transform: Callable[[str, int], str] | None = None, **props: Any) -> VNode:
+def Transform(
+    *children: VNode | str,
+    transform: Callable[[str, int], str] | None = None,
+    **props: Any,
+) -> VNode:
     """Apply transformations to string output. Matches Ink's <Transform>.
 
     The transform function receives (line: str, index: int) and returns

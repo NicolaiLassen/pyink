@@ -7,9 +7,6 @@ Source: /tmp/ink-reference/src/write-synchronized.ts
 from __future__ import annotations
 
 import shutil
-import signal
-import sys
-from typing import Callable
 
 
 def get_terminal_size() -> tuple[int, int]:

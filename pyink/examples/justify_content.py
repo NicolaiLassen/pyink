@@ -1,5 +1,5 @@
 """Port of Ink's examples/justify-content/justify-content.tsx."""
-from pyink import component, render, Box, Text
+from pyink import Box, Text, component, render
 
 
 @component
@@ -11,8 +11,6 @@ def justify_content():
 
     rows = []
     for mode in modes:
-        # Convert to snake_case for pyink props
-        prop_mode = mode.replace("-", "_")
         rows.append(
             Box(
                 Text("["),

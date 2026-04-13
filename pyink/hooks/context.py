@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pyink.fiber import Fiber

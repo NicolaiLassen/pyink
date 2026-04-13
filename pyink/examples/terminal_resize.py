@@ -1,5 +1,5 @@
 """Port of Ink's examples/terminal-resize/terminal-resize.tsx."""
-from pyink import component, render, Box, Text
+from pyink import Box, Text, component, render
 from pyink.hooks import use_window_size
 
 

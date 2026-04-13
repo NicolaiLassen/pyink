@@ -1,13 +1,13 @@
 """Port of Ink's examples/use-focus/use-focus.tsx — Tab focus navigation."""
-from pyink import component, render, Box, Text
+from pyink import Box, Text, component, render
 from pyink.hooks import use_focus
 
 
 @component
 def item(label="Item"):
     focus = use_focus()
-    focused_text = Text(" (focused)", color="green") if focus.is_focused else Text("")
-    return Text(f"{label}", bold=focus.is_focused)
+    suffix = " (focused)" if focus.is_focused else ""
+    return Text(f"{label}{suffix}", bold=focus.is_focused)
 
 
 @component

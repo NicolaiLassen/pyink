@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import pyyoga as yoga
 
-from pyink.dom import DOMElement, TextNode, squash_text_nodes
+from pyink.dom import DOMElement, squash_text_nodes
 from pyink.layout.styles import apply_styles
 
 # Regex to strip ANSI escape sequences for width measurement

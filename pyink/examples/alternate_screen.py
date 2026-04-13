@@ -1,7 +1,8 @@
 """Port of Ink's examples/alternate-screen — Snake game on alternate screen."""
 import random
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input, use_app, use_effect, use_ref, use_window_size
+
+from pyink import Box, Text, component, render
+from pyink.hooks import use_app, use_effect, use_input, use_ref, use_state, use_window_size
 
 BOARD_W = 20
 BOARD_H = 15
@@ -94,7 +95,7 @@ def build_board(snake, food):
 @component
 def snake_game():
     app = use_app()
-    size = use_window_size()
+    use_window_size()  # trigger re-render on resize
     game, set_game = use_state(initial_state())
     direction_ref = use_ref("right")
 
@@ -139,9 +140,15 @@ def snake_game():
     title_color = RAINBOW[game["frame"] % len(RAINBOW)]
     board = build_board(game["snake"], game["food"])
 
+    title_text = Text(
+        "\U0001f984 Unicorn Snake \U0001f984", bold=True, color=title_color
+    )
+    score_text = Text(
+        f"Score: {game['score']}", bold=True, color="yellow"
+    )
     children = [
-        Box(Text(f"\U0001f984 Unicorn Snake \U0001f984", bold=True, color=title_color), justify_content="center"),
-        Box(Text(f"Score: {game['score']}", bold=True, color="yellow"), justify_content="center", margin_top=1),
+        Box(title_text, justify_content="center"),
+        Box(score_text, justify_content="center", margin_top=1),
         Box(Text(board), margin_top=1),
     ]
 

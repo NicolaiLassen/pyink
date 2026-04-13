@@ -1,6 +1,6 @@
 """Port of Ink's examples/use-focus-with-id/use-focus-with-id.tsx."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_focus, use_input, use_focus_manager
+from pyink import Box, Text, component, render
+from pyink.hooks import use_focus, use_focus_manager, use_input
 
 
 @component

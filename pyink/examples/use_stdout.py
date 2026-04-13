@@ -1,6 +1,6 @@
 """Port of Ink's examples/use-stdout/use-stdout.tsx."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_stdout, use_window_size
+from pyink import Box, Text, component, render
+from pyink.hooks import use_window_size
 
 
 @component
@@ -10,13 +10,13 @@ def stdout_example():
     return Box(
         Text("Terminal dimensions:", bold=True, underline=True),
         Box(
-            Text(f"Width: ", color=None),
+            Text("Width: ", color=None),
             Text(str(size.columns), bold=True),
             flex_direction="row",
             margin_top=1,
         ),
         Box(
-            Text(f"Height: "),
+            Text("Height: "),
             Text(str(size.rows), bold=True),
             flex_direction="row",
         ),

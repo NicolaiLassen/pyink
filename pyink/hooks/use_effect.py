@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pyink.fiber import EffectRecord
 from pyink.hooks.context import get_current_fiber

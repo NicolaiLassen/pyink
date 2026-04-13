@@ -1,6 +1,6 @@
 """Multi-panel dashboard with animation."""
-from pyink import component, render, Box, Text, Spacer
-from pyink.hooks import use_state, use_input, use_app, use_animation
+from pyink import Box, Text, component, render
+from pyink.hooks import use_animation, use_app, use_input
 
 SPINNER = ["|", "/", "-", "\\"]
 

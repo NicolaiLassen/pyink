@@ -8,11 +8,10 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
-from typing import Callable
+from collections.abc import Callable
 
-from pyink.input.input_parser import InputParser, PasteEvent, create_input_parser
+from pyink.input.input_parser import PasteEvent, create_input_parser
 from pyink.input.keys import Key, parse_keypress
-
 
 # Bracketed paste mode escape sequences
 BRACKETED_PASTE_ON = "\x1b[?2004h"
@@ -168,7 +167,8 @@ class InputManager:
                     except Exception:
                         pass
             else:
-                input_str, key = parse_keypress(event.encode("utf-8") if isinstance(event, str) else event)
+                raw = event.encode("utf-8") if isinstance(event, str) else event
+                input_str, key = parse_keypress(raw)
                 # Internal handler can suppress (e.g. Ctrl+C with exitOnCtrlC)
                 if self._internal_handler and self._internal_handler(input_str, key):
                     continue

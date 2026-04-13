@@ -1,9 +1,12 @@
 """Port of Ink's examples/use-animation/use-animation.tsx — animated unicorn."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input, use_animation
+from pyink import Box, Text, component, render
+from pyink.hooks import use_animation, use_input, use_state
 
 RAINBOW = ["red", "yellow", "green", "cyan", "blue", "magenta"]
-SPINNER_FRAMES = ["\u280b", "\u2819", "\u2839", "\u2838", "\u283c", "\u2834", "\u2826", "\u2827", "\u2807", "\u280f"]
+SPINNER_FRAMES = [
+    "\u280b", "\u2819", "\u2839", "\u2838", "\u283c",
+    "\u2834", "\u2826", "\u2827", "\u2807", "\u280f",
+]
 TRAIL_CHAR = "\u2501"
 MAX_TRAIL = len(RAINBOW) * 3
 TRACK_WIDTH = 44
@@ -15,7 +18,7 @@ def animation_demo():
 
     fast = use_animation(interval=80, is_active=not paused)
     movement = use_animation(interval=50, is_active=not paused)
-    slow = use_animation(interval=400, is_active=not paused)
+    use_animation(interval=400, is_active=not paused)  # slow timer for sparkles
 
     def handle_input(input_str, key):
         if input_str == " ":

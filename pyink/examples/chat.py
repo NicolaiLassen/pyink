@@ -1,6 +1,6 @@
 """Port of Ink's examples/chat/chat.tsx — simple chat input."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input
+from pyink import Box, Text, component, render
+from pyink.hooks import use_input, use_state
 
 message_id = 0
 

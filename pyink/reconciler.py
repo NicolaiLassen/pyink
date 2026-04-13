@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pyink.dom import (
     DOMElement,
@@ -9,8 +10,6 @@ from pyink.dom import (
     append_child,
     create_element,
     create_text_node,
-    remove_child,
-    squash_text_nodes,
 )
 from pyink.fiber import Fiber
 from pyink.hooks.context import _current_app, _current_fiber, _schedule_update

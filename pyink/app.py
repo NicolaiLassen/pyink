@@ -13,25 +13,22 @@ import atexit
 import os
 import signal
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from pyink.dom import DOMElement
 from pyink.focus import FocusManager
-from pyink.hooks.context import _current_app
 from pyink.hooks.use_cursor import CursorPosition
 from pyink.input.keys import Key
 from pyink.input.reader import InputManager
 from pyink.reconciler import Reconciler
-from pyink.renderer.render_node import RenderResult, renderer
+from pyink.renderer.render_node import renderer
 from pyink.terminal import (
-    BSU,
     CLEAR_TERMINAL,
-    ESU,
     LogUpdate,
     get_terminal_size,
 )
 from pyink.vnode import VNode
-
 
 # ── Port of ink.tsx shouldClearTerminalForFrame (lines 118-152) ──
 
