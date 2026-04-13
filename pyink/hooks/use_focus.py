@@ -18,7 +18,8 @@ class FocusHandle:
 def use_focus(*, auto_focus: bool = False, is_active: bool = True, id: str | None = None) -> FocusHandle:
     """Make a component focusable via Tab navigation."""
     app = get_current_app()
-    focus_id_ref = use_ref(id or f"focus-{id(get_current_app)}")
+    import random
+    focus_id_ref = use_ref(id or str(random.random())[2:7])
     is_focused, set_is_focused = use_state(False)
 
     def effect():

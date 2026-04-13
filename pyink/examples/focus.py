@@ -1,4 +1,4 @@
-"""Focus management example showing Tab navigation between components."""
+"""Focus management example with visual indicators."""
 from pyink import component, render, Box, Text
 from pyink.hooks import use_state, use_input, use_app, use_focus
 
@@ -6,7 +6,6 @@ from pyink.hooks import use_state, use_input, use_app, use_focus
 @component
 def focusable_item(label="Item"):
     focus = use_focus()
-
     color = "green" if focus.is_focused else "gray"
     indicator = ">" if focus.is_focused else " "
 

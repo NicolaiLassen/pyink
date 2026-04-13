@@ -1,6 +1,8 @@
-"""Multi-panel dashboard example showing flexbox layout."""
+"""Multi-panel dashboard with animation."""
 from pyink import component, render, Box, Text, Spacer
 from pyink.hooks import use_state, use_input, use_app, use_animation
+
+SPINNER = ["|", "/", "-", "\\"]
 
 
 @component
@@ -14,19 +16,14 @@ def dashboard():
 
     use_input(handle_input)
 
-    spinner_chars = ["|", "/", "-", "\\"]
-    spinner = spinner_chars[anim.frame % len(spinner_chars)]
+    spinner = SPINNER[anim.frame % len(SPINNER)]
 
     return Box(
-        # Header
         Box(
-            Text(f" {spinner} PyInk Dashboard ", bold=True, color="white", background_color="blue"),
+            Text(f" {spinner} PyInk Dashboard ", bold=True, inverse=True),
             justify_content="center",
-            width="100%",
         ),
-        # Content
         Box(
-            # Left panel
             Box(
                 Text("System Status", bold=True, color="green"),
                 Text("CPU: 45%"),
@@ -38,7 +35,6 @@ def dashboard():
                 border_color="green",
                 padding=1,
             ),
-            # Right panel
             Box(
                 Text("Recent Activity", bold=True, color="yellow"),
                 Text("12:00 - Deploy v2.1.0"),
@@ -53,14 +49,12 @@ def dashboard():
             flex_direction="row",
             margin_top=1,
         ),
-        # Footer
         Box(
             Text("Press q to quit", dim_color=True),
             justify_content="center",
             margin_top=1,
         ),
         flex_direction="column",
-        width="100%",
     )
 
 

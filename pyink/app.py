@@ -220,15 +220,25 @@ class App:
 
     # ── Input handling ──
 
-    def _handle_input(self, input_str: str, key: Key) -> None:
-        """Handle built-in key behaviors."""
+    def _handle_internal_input(self, input_str: str, key: Key) -> bool:
+        """Internal handler — runs before user useInput listeners.
+
+        Returns True to suppress the event (prevent user handlers from seeing it).
+        Matches Ink's Ctrl+C filtering: when exitOnCtrlC is true, Ctrl+C
+        never reaches useInput handlers.
+        """
+        # Ctrl+C: exit and suppress from user handlers
         if key.ctrl and input_str == "c" and self._exit_on_ctrl_c:
             self.request_exit(0)
-            return
+            return True  # suppress
+
+        # Tab focus navigation (NOT suppressed — user handlers still see it)
         if key.tab and not key.shift:
             self.focus_manager.focus_next()
         elif key.tab and key.shift:
             self.focus_manager.focus_previous()
+
+        return False  # don't suppress
 
     # ── App lifecycle ──
 
@@ -273,9 +283,9 @@ class App:
         self._exit_event = asyncio.Event()
         self._reconciler.set_loop(self._loop)
 
-        # Setup input
+        # Setup input — internal handler runs before user useInput listeners
         self.input_manager = InputManager(self._loop)
-        self.input_manager.add_listener(self._handle_input)
+        self.input_manager._internal_handler = self._handle_internal_input
         self.input_manager.start()
 
         # Port of ink.tsx line 439: stdout.on('resize', this.resized)
@@ -483,8 +493,20 @@ def render_to_string_sync(
 
     reconciler = Reconciler(on_commit=on_commit)
 
+    class _NoopInputManager:
+        """No-op input manager for render_to_string_sync (no terminal)."""
+        def add_listener(self, fn): pass
+        def remove_listener(self, fn): pass
+        def add_paste_listener(self, fn): pass
+        def remove_paste_listener(self, fn): pass
+        def enable_bracketed_paste(self): pass
+        def disable_bracketed_paste(self): pass
+        is_raw_mode_supported = False
+        def enable_raw_mode(self): pass
+        def disable_raw_mode(self): pass
+
     class FakeApp:
-        input_manager = None
+        input_manager = _NoopInputManager()
         focus_manager = FocusManager()
         stdout = sys.stdout
         stderr = sys.stderr

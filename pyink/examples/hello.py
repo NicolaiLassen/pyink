@@ -1,4 +1,4 @@
-"""Simple hello world example matching Ink's basic usage."""
+"""Simple hello world example."""
 from pyink import component, render, Box, Text
 from pyink.hooks import use_app, use_input
 

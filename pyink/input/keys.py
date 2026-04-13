@@ -26,6 +26,11 @@ class Key:
     backspace: bool = False
     delete: bool = False
     meta: bool = False
+    super_key: bool = False
+    hyper: bool = False
+    caps_lock: bool = False
+    num_lock: bool = False
+    event_type: str | None = None  # 'press' | 'repeat' | 'release' (Kitty protocol)
     f1: bool = False
     f2: bool = False
     f3: bool = False
@@ -193,4 +198,8 @@ def parse_keypress(data: bytes) -> tuple[str, Key]:
         return (chr(ord("a") + ord(text) - 1), key)
 
     # Regular character(s)
+    # Uppercase letter → shift detection (matching Ink's use-input.ts lines 240-242)
+    if len(text) == 1 and text.isupper():
+        key.shift = True
+
     return (text, key)

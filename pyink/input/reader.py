@@ -33,6 +33,10 @@ class InputManager:
         self._loop = loop
         self._listeners: list[Callable[[str, Key], None]] = []
         self._paste_listeners: list[Callable[[str], None]] = []
+        # Internal handler runs BEFORE user listeners.
+        # If it returns True, the event is suppressed (not dispatched to user listeners).
+        # Used by App to intercept Ctrl+C before useInput handlers see it.
+        self._internal_handler: Callable[[str, Key], bool] | None = None
         self._old_settings: list | None = None
         self._reading = False
         self._raw_mode_count = 0
@@ -165,6 +169,9 @@ class InputManager:
                         pass
             else:
                 input_str, key = parse_keypress(event.encode("utf-8") if isinstance(event, str) else event)
+                # Internal handler can suppress (e.g. Ctrl+C with exitOnCtrlC)
+                if self._internal_handler and self._internal_handler(input_str, key):
+                    continue
                 for listener in list(self._listeners):
                     try:
                         listener(input_str, key)

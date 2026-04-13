@@ -1,33 +1,30 @@
-"""Interactive counter example matching Ink's counter demo."""
-from pyink import component, render, Box, Text
-from pyink.hooks import use_state, use_input, use_app
+"""Port of Ink's examples/counter/counter.tsx — auto-incrementing counter."""
+from pyink import component, render, Text
+from pyink.hooks import use_state, use_effect
+from pyink.hooks.context import get_current_app
 
 
 @component
 def counter():
     count, set_count = use_state(0)
-    app = use_app()
 
-    def handle_input(input_str, key):
-        if key.up_arrow:
+    # Capture app during render (not in effect)
+    app = get_current_app()
+
+    def effect():
+        def tick():
             set_count(lambda c: c + 1)
-        elif key.down_arrow:
-            set_count(lambda c: max(0, c - 1))
-        elif input_str == "q":
-            app.exit()
 
-    use_input(handle_input)
+        handle = app.add_timer(0.1, tick, repeating=True)
 
-    return Box(
-        Text(f"Counter: {count}", color="cyan", bold=True),
-        Box(
-            Text("Up/Down arrows to change, q to quit", dim_color=True),
-            margin_top=1,
-        ),
-        flex_direction="column",
-        padding=1,
-        border_style="round",
-    )
+        def cleanup():
+            app.remove_timer(handle)
+
+        return cleanup
+
+    use_effect(effect, ())
+
+    return Text(f"{count} tests passed", color="green")
 
 
 if __name__ == "__main__":
