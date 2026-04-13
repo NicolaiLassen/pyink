@@ -1,0 +1,17 @@
+[project]
+name = "pyink"
+version = "0.0.0"
+description = "Build terminal UIs with Python using React-like components and flexbox layout"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyoga>=0.1.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=9.0.3",
+]
