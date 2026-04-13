@@ -1,5 +1,10 @@
 # PyInk
 
+[![PyPI](https://img.shields.io/pypi/v/pyinklib)](https://pypi.org/project/pyinklib/)
+[![Tests](https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml/badge.svg)](https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml)
+[![Python](https://img.shields.io/pypi/pyversions/pyinklib)](https://pypi.org/project/pyinklib/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > Build terminal UIs with Python using React-like components and flexbox layout.
 
 A 1:1 Python port of [Ink](https://github.com/vadimdemedes/ink).
@@ -7,13 +12,13 @@ A 1:1 Python port of [Ink](https://github.com/vadimdemedes/ink).
 ## Install
 
 ```
-pip install pyink
+pip install pyinklib
 ```
 
 Or with [uv](https://github.com/astral-sh/uv):
 
 ```
-uv add pyink
+uv add pyinklib
 ```
 
 ## Usage
@@ -128,19 +133,32 @@ Transform(Text("hello"), transform=lambda text, idx: text.upper())
 ## Examples
 
 ```bash
-uv run python -m pyink.examples.counter
-uv run python -m pyink.examples.chat
-uv run python -m pyink.examples.dashboard
-uv run python -m pyink.examples.select_input
-uv run python -m pyink.examples.use_animation
-uv run python -m pyink.examples.borders
-uv run python -m pyink.examples.alternate_screen
-uv run python -m pyink.examples.use_focus
-uv run python -m pyink.examples.table
-uv run python -m pyink.examples.justify_content
-uv run python -m pyink.examples.terminal_resize
+pip install pyinklib
+
+python -m pyink.examples.counter            # Auto-incrementing counter
+python -m pyink.examples.use_input          # Move a face with arrow keys
+python -m pyink.examples.chat               # Type messages + Enter
+python -m pyink.examples.select_input       # Arrow key selection list
+python -m pyink.examples.dashboard          # Animated multi-panel dashboard
+python -m pyink.examples.use_animation      # Unicorn animation
+python -m pyink.examples.borders            # All 8 border styles
+python -m pyink.examples.border_backgrounds # Per-edge border colors
+python -m pyink.examples.box_backgrounds    # Background colors
+python -m pyink.examples.use_focus          # Tab focus navigation
+python -m pyink.examples.use_focus_with_id  # Programmatic focus by ID
+python -m pyink.examples.focus              # Focus with visual indicators
+python -m pyink.examples.table              # Data table with columns
+python -m pyink.examples.justify_content    # All justify-content modes
+python -m pyink.examples.terminal_resize    # Live terminal size display
+python -m pyink.examples.use_stdout         # Terminal dimensions
+python -m pyink.examples.alternate_screen   # Snake game (alt screen)
+python -m pyink.examples.hello              # Hello World
 ```
 
 ## Acknowledgements
 
 PyInk is a Python port of [Ink](https://github.com/vadimdemedes/ink) by [Vadim Demedes](https://github.com/vadimdemedes). All credit for the architecture and design goes to the Ink team.
+
+## License
+
+MIT
