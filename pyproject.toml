@@ -1,17 +1,52 @@
 [project]
-name = "pyink"
-version = "0.0.0"
-description = "Build terminal UIs with Python using React-like components and flexbox layout"
+name = "pyinkcli"
+version = "0.1.0"
+description = "Build terminal UIs with Python using React-like components and flexbox layout. A 1:1 port of Ink."
+readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    {name = "Nicolai M. T. Lassen"},
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Terminals",
+    "Topic :: Software Development :: User Interfaces",
+]
 dependencies = [
     "pyyoga>=0.1.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/NicolaiLassen/pyink"
+Repository = "https://github.com/NicolaiLassen/pyink"
+Issues = "https://github.com/NicolaiLassen/pyink/issues"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.targets.wheel]
+packages = ["pyink"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
 [tool.uv]
 dev-dependencies = [
     "pytest>=9.0.3",
+    "build>=1.4.0",
+    "twine>=6.2.0",
 ]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
