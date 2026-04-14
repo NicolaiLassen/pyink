@@ -44,15 +44,14 @@ def _should_clear_terminal_for_frame(
 
     had_previous_frame = previous_output_height > 0
     was_fullscreen = previous_output_height >= viewport_rows
+    was_overflowing = previous_output_height > viewport_rows
     is_overflowing = next_output_height > viewport_rows
     is_leaving_fullscreen = was_fullscreen and next_output_height < viewport_rows
-    is_entering_fullscreen = not was_fullscreen and is_overflowing and had_previous_frame
     should_clear_on_unmount = is_unmounting and was_fullscreen
 
-    # Only clear on state transitions, NOT on every overflowing frame.
-    # Clearing every frame when overflowing causes scrollbar flicker.
     return (
-        is_entering_fullscreen
+        was_overflowing
+        or (is_overflowing and had_previous_frame)
         or is_leaving_fullscreen
         or should_clear_on_unmount
     )
