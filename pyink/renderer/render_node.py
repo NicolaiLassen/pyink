@@ -384,7 +384,12 @@ def _widest_line(text: str) -> int:
 
 
 def _collect_text_styles(node: DOMElement) -> dict[str, Any]:
-    """Collect text style props from node and parent text nodes."""
+    """Collect text style props from node and parent text nodes.
+
+    Also implements BackgroundContext: if no explicit background_color
+    is set on the text, walk up to find the nearest ancestor Box with
+    a background_color and inherit it (port of Ink's BackgroundContext).
+    """
     style_props: dict[str, Any] = {}
     for key in (
         "color", "bold", "dim", "dim_color", "italic", "underline",
@@ -396,7 +401,7 @@ def _collect_text_styles(node: DOMElement) -> dict[str, Any]:
 
     # Inherit from parent text nodes
     parent = node.parent
-    while parent and parent.node_name == "ink-text":
+    while parent and parent.node_name in ("ink-text", "ink-virtual-text"):
         for key in (
             "color", "bold", "dim", "dim_color", "italic", "underline",
             "strikethrough", "inverse", "overline", "background_color",
@@ -405,6 +410,25 @@ def _collect_text_styles(node: DOMElement) -> dict[str, Any]:
             if key in parent.style and key not in style_props:
                 style_props[key] = parent.style[key]
         parent = parent.parent
+
+    # Port of Ink's BackgroundContext (Box.tsx lines 102-109, Text.tsx lines 86,104-107):
+    # If no explicit background_color on text, inherit from nearest ancestor Box
+    has_bg = any(
+        k in style_props for k in ("background_color", "bg_color", "background")
+    )
+    if not has_bg and parent:
+        ancestor = parent
+        while ancestor:
+            if ancestor.node_name == "ink-box":
+                inherited_bg = (
+                    ancestor.style.get("background_color")
+                    or ancestor.style.get("bg_color")
+                    or ancestor.style.get("background")
+                )
+                if inherited_bg:
+                    style_props["background_color"] = inherited_bg
+                    break
+            ancestor = ancestor.parent
 
     return style_props
 

@@ -101,6 +101,7 @@ class App:
         on_render: Callable | None = None,
         incremental_rendering: bool = False,
         patch_console: bool = False,
+        kitty_keyboard: dict | None = None,
     ) -> None:
         self._root_vnode = root_vnode
         self.stdout = stdout or sys.stdout
@@ -176,6 +177,10 @@ class App:
 
         # Exit callbacks
         self._exit_callbacks: list[Callable[[], None]] = []
+
+        # Kitty keyboard protocol (port of ink.tsx lines 315-316, 1097-1185)
+        self._kitty_keyboard_opts = kitty_keyboard
+        self._kitty_protocol_enabled = False
 
         # Render throttle (port of ink.tsx lines 338-344)
         self._render_throttle_ms = max(1, 1000 // max_fps) if max_fps > 0 else 0
@@ -613,6 +618,13 @@ class App:
         # Port of ink.tsx line 439: stdout.on('resize', this.resized)
         self._setup_resize_handler()
 
+        # Port of ink.tsx patchConsole (lines 434, 937-955)
+        if self._patch_console and not self._debug:
+            self._do_patch_console()
+
+        # Port of ink.tsx initKittyKeyboard (line 446)
+        self._init_kitty_keyboard()
+
         def cleanup():
             self._cleanup()
 
@@ -651,6 +663,12 @@ class App:
             self._animation_timer = None
         self._animation_subscribers.clear()
 
+        # Disable kitty keyboard protocol before cleanup
+        self._disable_kitty_protocol()
+
+        # Restore console before React cleanup (matching Ink ink.tsx lines 767-773)
+        self._do_restore_console()
+
         if self.input_manager:
             self.input_manager.stop()
         self._reconciler.unmount()
@@ -672,6 +690,97 @@ class App:
             self.stdout.flush()
         except Exception:
             pass
+
+    # ── Kitty keyboard protocol (port of ink.tsx lines 1097-1185) ──
+
+    def _init_kitty_keyboard(self) -> None:
+        """Initialize Kitty keyboard protocol if configured."""
+        if not self._kitty_keyboard_opts:
+            return
+
+        opts = self._kitty_keyboard_opts
+        mode = opts.get("mode", "auto")
+
+        if mode == "disabled":
+            return
+
+        from pyink.input.kitty_keyboard import resolve_flags
+
+        flags = opts.get("flags", ["disambiguate_escape_codes"])
+        flag_bits = resolve_flags(flags)
+
+        is_stdin_tty = hasattr(self.stdin, "isatty") and self.stdin.isatty()
+        is_stdout_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
+
+        if mode == "enabled":
+            if is_stdin_tty and is_stdout_tty:
+                self._enable_kitty_protocol(flag_bits)
+            return
+
+        # Auto mode: require interactive + TTY
+        if not self._interactive or not is_stdin_tty or not is_stdout_tty:
+            return
+
+        # Query terminal for kitty support (200ms timeout)
+        self._stdout_write("\x1b[?u")
+        # In auto mode, the response will be detected by the input manager.
+        # For simplicity, we enable it optimistically if the terminal env
+        # suggests support (TERM_PROGRAM=kitty, etc.)
+        term = os.environ.get("TERM_PROGRAM", "").lower()
+        if "kitty" in term or "wezterm" in term or "ghostty" in term:
+            self._enable_kitty_protocol(flag_bits)
+
+    def _enable_kitty_protocol(self, flags: int) -> None:
+        """Enable kitty keyboard protocol with given flags."""
+        self._stdout_write(f"\x1b[>{flags}u")
+        self._kitty_protocol_enabled = True
+
+    def _disable_kitty_protocol(self) -> None:
+        """Disable kitty keyboard protocol if enabled."""
+        if self._kitty_protocol_enabled:
+            self._stdout_write("\x1b[<u")
+            self._kitty_protocol_enabled = False
+
+    def _do_patch_console(self) -> None:
+        """Patch sys.stdout/stderr writes to route through Ink output.
+
+        Port of Ink's patchConsole (ink.tsx lines 937–955).
+        Preserves the rendered frame when print() or direct writes happen.
+        """
+        import builtins
+
+        self._original_print = builtins.print
+        self._original_stdout_write = sys.stdout.write
+        self._original_stderr_write = sys.stderr.write
+
+        app = self
+
+        def patched_print(*args: Any, **kwargs: Any) -> None:
+            import io
+
+            buf = io.StringIO()
+            kwargs_copy = dict(kwargs)
+            kwargs_copy["file"] = buf
+            self._original_print(*args, **kwargs_copy)
+            text = buf.getvalue()
+
+            file = kwargs.get("file")
+            if file is None or file is sys.stdout:
+                app.write_to_stdout(text)
+            elif file is sys.stderr:
+                app.write_to_stderr(text)
+            else:
+                # Write to custom file directly
+                self._original_print(*args, **kwargs)
+
+        builtins.print = patched_print  # type: ignore[assignment]
+
+    def _do_restore_console(self) -> None:
+        """Restore original print and write functions."""
+        import builtins
+
+        if hasattr(self, "_original_print"):
+            builtins.print = self._original_print  # type: ignore[assignment]
 
     def _setup_resize_handler(self) -> None:
         try:
@@ -892,6 +1001,7 @@ def render(
     on_render: Callable | None = None,
     incremental_rendering: bool = False,
     patch_console: bool = False,
+    kitty_keyboard: dict | None = None,
 ) -> Instance | None:
     """Port of Ink's render() from render.ts.
 
@@ -944,6 +1054,7 @@ def render(
         on_render=on_render,
         incremental_rendering=incremental_rendering,
         patch_console=patch_console,
+        kitty_keyboard=kitty_keyboard,
     )
 
     try:

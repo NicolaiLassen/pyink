@@ -1,13 +1,25 @@
-# PyInk
+<p align="center">
+  <img src="https://raw.githubusercontent.com/vadimdemedes/ink/master/media/logo.png" width="200" alt="Ink logo">
+</p>
 
-[![PyPI](https://img.shields.io/pypi/v/pyinklib)](https://pypi.org/project/pyinklib/)
-[![Tests](https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml/badge.svg)](https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml)
-[![Python](https://img.shields.io/pypi/pyversions/pyinklib)](https://pypi.org/project/pyinklib/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<h1 align="center">PyInk</h1>
 
-> Build terminal UIs with Python using React-like components and flexbox layout.
+<p align="center">
+  <a href="https://pypi.org/project/pyinklib/"><img src="https://img.shields.io/pypi/v/pyinklib" alt="PyPI"></a>
+  <a href="https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml"><img src="https://github.com/NicolaiLassen/pyink/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
+  <a href="https://pypi.org/project/pyinklib/"><img src="https://img.shields.io/pypi/pyversions/pyinklib" alt="Python"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
-A 1:1 Python port of [Ink](https://github.com/vadimdemedes/ink).
+<p align="center">
+  Build terminal UIs with Python using React-like components and flexbox layout.
+</p>
+
+---
+
+A 1:1 Python port of [**Ink**](https://github.com/vadimdemedes/ink) — the amazing React-based CLI framework by [Vadim Demedes](https://github.com/vadimdemedes).
+
+PyInk brings Ink's component model, hooks system, and flexbox layout engine to Python. Same architecture, same patterns, same terminal magic.
 
 ## Install
 
@@ -117,7 +129,7 @@ Transform(Text("hello"), transform=lambda text, idx: text.upper())
 | `use_state(initial)` | Local state, returns `(value, setter)` |
 | `use_effect(fn, deps)` | Side effects with cleanup |
 | `use_input(handler)` | Keyboard input |
-| `use_app()` | App lifecycle (`exit()`) |
+| `use_app()` | App lifecycle (`exit()`, `wait_until_render_flush()`) |
 | `use_focus()` | Tab-based focus |
 | `use_focus_manager()` | Programmatic focus control |
 | `use_animation(interval=100)` | Frame animation |
@@ -129,6 +141,27 @@ Transform(Text("hello"), transform=lambda text, idx: text.upper())
 | `use_cursor()` | Cursor position |
 | `use_box_metrics(ref)` | Element measurements |
 | `use_is_screen_reader_enabled()` | Accessibility detection |
+
+## Render Options
+
+```python
+render(
+    element,
+    stdout=sys.stdout,              # output stream
+    stdin=sys.stdin,                 # input stream
+    stderr=sys.stderr,              # error stream
+    exit_on_ctrl_c=True,            # exit on Ctrl+C
+    use_alt_screen=False,           # alternate screen buffer (vim-like)
+    max_fps=30,                     # max render frames per second
+    debug=False,                    # each update as separate output
+    interactive=None,               # override interactive mode detection
+    incremental_rendering=False,    # only update changed lines
+    patch_console=False,            # route print() through Ink output
+    kitty_keyboard=None,            # kitty keyboard protocol options
+    is_screen_reader_enabled=None,  # force screen reader mode
+    on_render=None,                 # callback with render metrics
+)
+```
 
 ## Examples
 
@@ -157,7 +190,11 @@ python -m pyink.examples.hello              # Hello World
 
 ## Acknowledgements
 
-PyInk is a Python port of [Ink](https://github.com/vadimdemedes/ink) by [Vadim Demedes](https://github.com/vadimdemedes). All credit for the architecture and design goes to the Ink team.
+PyInk is a 1:1 Python port of [**Ink**](https://github.com/vadimdemedes/ink) by [**Vadim Demedes**](https://github.com/vadimdemedes) and the Ink contributors.
+
+A huge **thank you** to the entire Ink team for creating such an incredible framework. The architecture, design, and attention to detail in Ink is what makes PyInk possible. Every component, hook, and rendering algorithm in PyInk is a direct port of Ink's TypeScript source code.
+
+If you're building CLI tools in JavaScript/TypeScript, use [Ink](https://github.com/vadimdemedes/ink). If you're in Python, use PyInk.
 
 ## License
 
