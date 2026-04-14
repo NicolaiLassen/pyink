@@ -148,7 +148,7 @@ def Static(
         A virtual node representing the static container.
     """
     from pyink.component import component
-    from pyink.hooks.use_effect import use_effect
+    from pyink.hooks.use_effect import use_layout_effect
     from pyink.hooks.use_state import use_state
 
     @component
@@ -161,7 +161,10 @@ def Static(
         def sync_index():
             set_index(len(items) if items else 0)
 
-        use_effect(sync_index, (len(items) if items else 0,))
+        # useLayoutEffect — fires during commit, before render output.
+        # This clears children so the renderer only sees new items once.
+        # Matches Ink's Static.tsx line 36-38.
+        use_layout_effect(sync_index, (len(items) if items else 0,))
 
         rendered = []
         if render_item and items_to_render:

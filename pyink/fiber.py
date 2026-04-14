@@ -39,6 +39,10 @@ class Fiber:
     effects: list[EffectRecord] = field(default_factory=list)
     effect_index: int = 0
 
+    # Layout effects (run synchronously during commit, before render)
+    layout_effects: list[EffectRecord] = field(default_factory=list)
+    layout_effect_index: int = 0
+
     # Tree links
     child_fibers: list[Fiber] = field(default_factory=list)
     parent: Fiber | None = None
@@ -56,3 +60,4 @@ class Fiber:
     def reset_hook_index(self) -> None:
         self.hook_index = 0
         self.effect_index = 0
+        self.layout_effect_index = 0

@@ -23,7 +23,7 @@ from pyink.dom import (
 )
 from pyink.fiber import Fiber
 from pyink.hooks.context import _current_app, _current_fiber, _schedule_update
-from pyink.hooks.use_effect import cleanup_effects, run_effects
+from pyink.hooks.use_effect import cleanup_effects, run_effects, run_layout_effects
 from pyink.layout.styles import apply_styles
 from pyink.vnode import VNode
 
@@ -274,8 +274,15 @@ class Reconciler:
 
         fiber.child_fibers = new_fibers
 
-        # Sync DOM child order to match fiber order
-        self._sync_children_dom(fiber)
+        # Wire new DOM nodes into the tree.
+        # For host fibers: sync DOM children to match fiber children.
+        # For component fibers: attach newly created children's DOM nodes
+        # to the nearest ancestor host DOM (without removing siblings).
+        if fiber.dom_node is not None:
+            self._sync_children_dom(fiber)
+        else:
+            # Component fiber: just ensure new children are attached
+            self._attach_new_children_dom(fiber)
 
     # ── DOM Creation (port of createInstance/createTextInstance) ──
 
@@ -434,8 +441,9 @@ class Reconciler:
             ):
                 return
 
-        # If this is a static node and children changed, mark dirty
-        if parent_dom.internal_static:
+        # If this is a static node and NEW children were added, mark dirty.
+        # Don't mark dirty when children are removed (that's just cleanup).
+        if parent_dom.internal_static and len(target_children) > len(parent_dom.children):
             self._root_node.is_static_dirty = True
 
         # Build set of target node ids
@@ -464,16 +472,37 @@ class Reconciler:
                 else:
                     append_child(parent_dom, child_node)
 
+    def _attach_new_children_dom(self, component_fiber: Fiber) -> None:
+        """Attach newly created children's DOM nodes to the nearest ancestor.
+
+        For component fibers only. Ensures that DOM nodes created during
+        reconciliation are wired into the tree without disturbing siblings.
+        """
+        parent_dom = self._find_host_dom(component_fiber)
+        if parent_dom is None or not isinstance(parent_dom, DOMElement):
+            return
+
+        for child_fiber in component_fiber.child_fibers:
+            nodes: list[DOMElement | TextNode] = []
+            self._collect_host_nodes(child_fiber, nodes)
+            for node in nodes:
+                if node.parent is not parent_dom:
+                    append_child(parent_dom, node)
+
     def _find_host_dom(self, fiber: Fiber) -> DOMElement | TextNode | None:
         """Find the nearest host DOM node for a fiber.
 
-        Component fibers don't have DOM nodes — walk up to find one,
-        or return the root node.
+        Component fibers don't have DOM nodes — walk UP the parent
+        chain to find the nearest ancestor with a DOM node.
         """
         if fiber.dom_node is not None:
             return fiber.dom_node
-        # For the root fiber or component fibers without dom_node,
-        # use the persistent root node
+        # Walk up parent chain to find nearest host ancestor
+        parent = fiber.parent
+        while parent is not None:
+            if parent.dom_node is not None:
+                return parent.dom_node
+            parent = parent.parent
         return self._root_node
 
     def _collect_host_nodes(
@@ -556,18 +585,70 @@ class Reconciler:
     # ── Commit ──
 
     def _commit(self) -> None:
-        """Signal that mutations are complete. Port of resetAfterCommit.
+        """Port of resetAfterCommit + useLayoutEffect flush.
 
-        The DOM tree is already up to date (mutated in place during
-        reconciliation). Just run effects and notify the App.
+        Ink's sequence:
+        1. resetAfterCommit → onImmediateRender (writes static)
+        2. useLayoutEffect → setIndex(N) → synchronous re-render
+        3. Re-render clears static children (internal, no output)
+        4. useEffect fires after everything
         """
         if self.root_fiber:
-            # The root fiber's dom_node is set during mount; the root
-            # DOM node is self._root_node which persists for the app lifetime.
-            # Point root_fiber.dom_node at it so App can find it.
             self.root_fiber.dom_node = self._root_node
-            self._run_all_effects(self.root_fiber)
+
+        # Step 1: Notify App (renders frame with current DOM)
         self._on_commit()
+
+        if self.root_fiber:
+            # Step 2: Run layout effects (may call set_state)
+            self._run_all_layout_effects(self.root_fiber)
+
+            # Step 3: Flush layout-effect-triggered updates SILENTLY.
+            # This is an internal synchronous re-render — do NOT notify
+            # the App again. The DOM is updated but no frame is written.
+            # This matches Ink where the layout effect re-render's
+            # resetAfterCommit sees empty static → does nothing visible.
+            self._flush_layout_updates()
+
+            # Step 4: Run regular effects
+            self._run_all_effects(self.root_fiber)
+
+    def _flush_layout_updates(self) -> None:
+        """Flush state updates triggered by layout effects.
+
+        Re-renders dirty fibers synchronously WITHOUT notifying the App.
+        Runs recursively until no more layout effects trigger updates.
+        """
+        if not self._dirty_fibers:
+            return
+
+        fibers = [self._dirty_fiber_map[fid] for fid in self._dirty_fibers]
+        self._dirty_fibers.clear()
+        self._dirty_fiber_map.clear()
+        self._render_scheduled = False  # cancel pending async flush
+
+        for fiber in fibers:
+            self._render_fiber(
+                fiber,
+                is_inside_text=self._is_fiber_inside_text(fiber),
+            )
+
+        if self.root_fiber:
+            self.root_fiber.dom_node = self._root_node
+
+        # Run layout effects on re-rendered fibers (may trigger more updates)
+        if self.root_fiber:
+            self._run_all_layout_effects(self.root_fiber)
+
+        # Recurse if more updates were triggered
+        if self._dirty_fibers:
+            self._flush_layout_updates()
+
+    def _run_all_layout_effects(self, fiber: Fiber) -> None:
+        """Run layout effects synchronously during commit."""
+        run_layout_effects(fiber)
+        for child in fiber.child_fibers:
+            self._run_all_layout_effects(child)
 
     def _run_all_effects(self, fiber: Fiber) -> None:
         run_effects(fiber)

@@ -2,7 +2,7 @@ from pyink.hooks.use_animation import AnimationResult, use_animation
 from pyink.hooks.use_app import use_app
 from pyink.hooks.use_box_metrics import BoxMetrics, use_box_metrics
 from pyink.hooks.use_cursor import CursorPosition, use_cursor
-from pyink.hooks.use_effect import use_effect
+from pyink.hooks.use_effect import use_effect, use_layout_effect
 from pyink.hooks.use_focus import use_focus, use_focus_manager
 from pyink.hooks.use_input import use_input
 from pyink.hooks.use_is_screen_reader_enabled import use_is_screen_reader_enabled
@@ -16,6 +16,7 @@ __all__ = [
     # Core hooks
     "use_state",
     "use_effect",
+    "use_layout_effect",
     "use_ref",
     "use_memo",
     "use_callback",

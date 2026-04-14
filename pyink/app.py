@@ -205,7 +205,6 @@ class App:
             emit_layout_listeners(dom)
 
             # Static output needs immediate render (Ink lines 170–177)
-            # Clear dirty flag BEFORE render, matching Ink's resetAfterCommit line 171
             if dom.is_static_dirty:
                 dom.is_static_dirty = False
                 self._on_render()
@@ -265,11 +264,14 @@ class App:
             except Exception:
                 pass
 
-        has_static = result.static_output and result.static_output != "\n"
+        # Static output check — matching Ink's onRender (ink.tsx line 541)
+        is_static_write = bool(
+            result.static_output and result.static_output != "\n"
+        )
 
         # Debug mode: write each update as separate output (ink.tsx lines 543-553)
         if self._debug:
-            if has_static:
+            if is_static_write:
                 self._full_static_output += result.static_output
             self._last_output = result.output
             self._last_output_to_render = result.output
@@ -279,20 +281,17 @@ class App:
 
         # Non-interactive mode (ink.tsx lines 555-564)
         if not self._interactive:
-            if has_static:
+            if is_static_write:
                 self._stdout_write(result.static_output)
             self._last_output = result.output
             self._last_output_to_render = result.output + "\n"
             self._last_output_height = result.output_height
             return
 
-        # Pass static output to the frame renderer.
-        # The dirty flag was already cleared in _on_commit (matching Ink).
-        # Only non-empty static output triggers the static write path.
-        has_static = result.static_output and result.static_output != "\n"
-        static_output = result.static_output if has_static else ""
+        # Interactive mode: pass static output to frame renderer
+        static_output = result.static_output if is_static_write else ""
 
-        if has_static:
+        if is_static_write:
             self._full_static_output += static_output
 
         self._render_interactive_frame(
@@ -1127,9 +1126,18 @@ def render_to_string_sync(
         The rendered output as a plain string with ANSI codes.
     """
     from pyink.reconciler import Reconciler
+    from pyink.renderer.render_node import renderer as _renderer
+
+    # Capture static output during commit (like Ink's onImmediateRender)
+    captured_static: list[str] = []
 
     def on_commit():
-        pass
+        rn = reconciler._root_node
+        if rn and rn.is_static_dirty:
+            rn.is_static_dirty = False
+            result = _renderer(rn, width=columns)
+            if result.static_output and result.static_output != "\n":
+                captured_static.append(result.static_output)
 
     reconciler = Reconciler(on_commit=on_commit)
 
@@ -1179,18 +1187,15 @@ def render_to_string_sync(
     dom = root_fiber.dom_node if root_fiber else None
 
     if isinstance(dom, DOMElement):
-        # Port of Ink's renderToString (render-to-string.ts lines 59-142):
-        # Capture static output and prepend it to dynamic output.
-        from pyink.renderer.render_node import renderer as _renderer
-
+        # Static output was captured by on_commit during mount.
+        # Now render the dynamic (non-static) output.
         result = _renderer(dom, width=columns)
+        output = result.output
 
-        static_output = result.static_output or ""
-        # Strip trailing newline from static output (Ink lines 134-136)
+        # Combine captured static with dynamic output
+        static_output = "".join(captured_static)
         if static_output.endswith("\n"):
             static_output = static_output[:-1]
-
-        output = result.output
 
         reconciler.unmount()
 
