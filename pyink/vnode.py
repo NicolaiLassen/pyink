@@ -28,8 +28,8 @@ def _make_element(node_type: str, *children: VNode | str, **props: Any) -> VNode
 def Box(*children: VNode | str, **props: Any) -> VNode:
     """Layout container with flexbox styling. Matches Ink's <Box>.
 
-    Supports all flexbox props: flex_direction, justify_content, align_items,
-    padding, margin, width, height, border_style, overflow, etc.
+    Applies Ink's default styles (Box.tsx lines 83–92):
+    flex_wrap='nowrap', flex_direction='row', flex_grow=0, flex_shrink=1.
 
     Parameters
     ----------
@@ -43,14 +43,27 @@ def Box(*children: VNode | str, **props: Any) -> VNode:
     VNode
         A virtual node representing the box element.
     """
+    # Port of Box.tsx lines 83-91: apply defaults before user props
+    props.setdefault("flex_wrap", "nowrap")
+    props.setdefault("flex_direction", "row")
+    props.setdefault("flex_grow", 0)
+    props.setdefault("flex_shrink", 1)
+
+    # Port of Box.tsx lines 90-91: overflow defaults
+    overflow = props.get("overflow")
+    if "overflow_x" not in props:
+        props["overflow_x"] = props.get("overflow_x", overflow or "visible")
+    if "overflow_y" not in props:
+        props["overflow_y"] = props.get("overflow_y", overflow or "visible")
+
     return _make_element("ink-box", *children, **props)
 
 
 def Text(*children: VNode | str, **props: Any) -> VNode:
     """Text display with styling. Matches Ink's <Text>.
 
-    Supports: color, background_color, bold, dim, dim_color, italic,
-    underline, strikethrough, inverse, overline, text_wrap.
+    Applies Ink's default styles (Text.tsx line 139):
+    flex_grow=0, flex_shrink=1, flex_direction='row', text_wrap='wrap'.
 
     Parameters
     ----------
@@ -64,6 +77,12 @@ def Text(*children: VNode | str, **props: Any) -> VNode:
     VNode
         A virtual node representing the text element.
     """
+    # Port of Text.tsx line 139: default styles
+    props.setdefault("flex_grow", 0)
+    props.setdefault("flex_shrink", 1)
+    props.setdefault("flex_direction", "row")
+    # Port of Text.tsx line 80: wrap='wrap' default
+    props.setdefault("text_wrap", "wrap")
     return _make_element("ink-text", *children, **props)
 
 

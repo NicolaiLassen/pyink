@@ -125,6 +125,17 @@ class App:
             is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
             self._interactive = not ci and is_tty
 
+        # Port of ink.tsx lines 335, 957-985: alternate screen
+        self._alternate_screen = (
+            bool(use_alt_screen)
+            and self._interactive
+            and hasattr(self.stdout, "isatty")
+            and self.stdout.isatty()
+        )
+        if self._alternate_screen:
+            self._stdout_write("\x1b[?1049h")  # enter alternate screen
+            self._stdout_write("\x1b[?25l")  # hide cursor
+
         # Port of ink.tsx constructor state (lines 390-401)
         self._is_unmounted = False
         self._is_unmounting = False
@@ -346,7 +357,14 @@ class App:
             if sync:
                 self._stdout_write(ESU)
         elif output != self._last_output or self._log.is_cursor_dirty():
+            # Port of ink.tsx throttledLog (lines 367-388):
+            # Wrap normal log writes with BSU/ESU to prevent flicker
+            should_write = self._log.will_render(output_to_render)
+            if sync and should_write:
+                self._stdout_write(BSU)
             self._log(output_to_render)
+            if sync and should_write:
+                self._stdout_write(ESU)
 
         self._last_output = output
         self._last_output_to_render = output_to_render
@@ -639,11 +657,18 @@ class App:
         self.focus_manager.reset()
         self._cleanup_resize_handler()
 
-        # Port of ink.tsx: log.done() restores cursor
-        self._log.done()
+        # Port of ink.tsx lines 796-803: restore alternate screen on exit
+        if self._alternate_screen:
+            self._stdout_write("\x1b[?1049l")  # exit alternate screen
+            self._stdout_write("\x1b[?25h")  # show cursor
+            self._alternate_screen = False
+        elif not self._debug:
+            # Port of ink.tsx: log.done() restores cursor
+            self._log.done()
 
         try:
-            self.stdout.write("\n")
+            if not self._alternate_screen:
+                self.stdout.write("\n")
             self.stdout.flush()
         except Exception:
             pass
