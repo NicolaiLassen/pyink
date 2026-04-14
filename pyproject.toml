@@ -1,6 +1,6 @@
 [project]
 name = "pyinklib"
-version = "0.0.3"
+version = "0.0.4"
 description = "Build terminal UIs with Python using React-like components and flexbox layout. A 1:1 port of Ink."
 readme = "README.md"
 requires-python = ">=3.10"
