@@ -30,16 +30,24 @@ def test_newline():
 
 
 def test_static_with_items():
+    """Static with items returns a component VNode that internally sets internal_static."""
     items = ["a", "b", "c"]
     node = Static(items=items, render_item=lambda item, i: Text(item, key=i))
-    assert node.props["_static"] is True
-    assert len(node.children) == 3
+    # items path returns a component VNode (_static_inner)
+    assert callable(node.type)
+
+
+def test_static_direct_children():
+    """Static with direct children sets internal_static on the element."""
+    node = Static(Text("hello"))
+    assert node.props["internal_static"] is True
+    assert node.type == "ink-box"
 
 
 def test_transform():
     fn = lambda text, idx: text.upper()
     node = Transform(Text("hello"), transform=fn)
-    assert node.props["_transform"] is fn
+    assert node.props["internal_transform"] is fn
 
 
 def test_key_prop():

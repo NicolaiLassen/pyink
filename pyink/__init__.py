@@ -34,6 +34,9 @@ from pyink.app import Instance, render, render_async, render_to_string_sync
 # Core component decorator
 from pyink.component import component
 
+# Cursor types
+from pyink.cursor_helpers import CursorPosition
+
 # DOM types
 from pyink.dom import DOMElement
 
@@ -41,7 +44,6 @@ from pyink.dom import DOMElement
 from pyink.hooks import (
     AnimationResult,
     BoxMetrics,
-    CursorPosition,
     # Types
     WindowSize,
     use_animation,

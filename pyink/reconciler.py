@@ -1,3 +1,7 @@
+"""Fiber-based reconciler — diffs VNode trees, schedules renders.
+
+1:1 port of Ink's reconciler patterns from ``src/reconciler.ts``.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -8,13 +12,80 @@ from pyink.dom import (
     DOMElement,
     TextNode,
     append_child,
-    create_element,
+    create_node,
     create_text_node,
+    set_attribute,
+    set_style,
 )
 from pyink.fiber import Fiber
 from pyink.hooks.context import _current_app, _current_fiber, _schedule_update
 from pyink.hooks.use_effect import cleanup_effects, run_effects
+from pyink.layout.styles import apply_styles
 from pyink.vnode import VNode
+
+# Props that are NOT yoga/style props — they get special handling
+_SPECIAL_PROPS = frozenset(
+    {"children", "key", "style", "internal_transform", "internal_static"}
+)
+
+
+def _diff(
+    before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> dict[str, Any] | None:
+    """Compute changed props between two dicts.
+
+    Port of Ink's ``diff`` (reconciler.ts lines 48–79).
+
+    Parameters
+    ----------
+    before : dict or None
+        Previous props.
+    after : dict or None
+        New props.
+
+    Returns
+    -------
+    dict or None
+        Dict of changed keys, or None if unchanged.
+    """
+    if before is after:
+        return None
+
+    if not before:
+        return after
+
+    changed: dict[str, Any] = {}
+    is_changed = False
+
+    for key in before:
+        if after is None or key not in after:
+            changed[key] = None
+            is_changed = True
+
+    if after:
+        for key in after:
+            if after[key] is not before.get(key):
+                changed[key] = after[key]
+                is_changed = True
+
+    return changed if is_changed else None
+
+
+def _cleanup_yoga_node(node: DOMElement) -> None:
+    """Free yoga node resources.
+
+    Port of Ink's ``cleanupYogaNode`` (reconciler.ts lines 81–84).
+
+    Parameters
+    ----------
+    node : DOMElement
+        The element whose yoga node should be freed.
+    """
+    if node.yoga_node is not None:
+        try:
+            node.yoga_node.free()
+        except Exception:
+            pass
 
 
 class Reconciler:
@@ -35,6 +106,7 @@ class Reconciler:
         self._on_commit = on_commit
         self._app: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._root_node: DOMElement | None = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Assign the event loop used for scheduling batched updates.
@@ -130,6 +202,15 @@ class Reconciler:
                 self._reconcile_children(fiber, result)
             else:
                 self._reconcile_children(fiber, [str(result)])
+        except Exception:
+            # Port of ErrorBoundary: catch render errors and exit app
+            # (Ink components/ErrorBoundary.tsx)
+            import sys
+            import traceback
+
+            traceback.print_exc(file=sys.stderr)
+            if self._app and hasattr(self._app, "request_exit"):
+                self._app.request_exit(1)
         finally:
             _current_fiber.reset(token)
             _schedule_update.reset(schedule_token)
@@ -243,44 +324,137 @@ class Reconciler:
     def _destroy_fiber(self, fiber: Fiber) -> None:
         """Cleanup effects and tear down subtree."""
         cleanup_effects(fiber)
+        # Cleanup yoga nodes on DOM elements
+        if fiber.dom_node and isinstance(fiber.dom_node, DOMElement):
+            _cleanup_yoga_node(fiber.dom_node)
         for child in fiber.child_fibers:
             self._destroy_fiber(child)
 
     def _commit(self) -> None:
-        """Build DOM tree from fiber tree and notify renderer."""
+        """Build DOM tree from fiber tree and notify renderer.
+
+        Port of Ink's resetAfterCommit (reconciler.ts lines 160–182).
+        Since pyink rebuilds the DOM each commit (middle-ground approach),
+        we delegate layout/render scheduling to the App via ``_on_commit``.
+        """
         if self.root_fiber:
-            root_dom = self._build_dom(self.root_fiber)
+            root_dom = self._build_dom(self.root_fiber, is_inside_text=False)
             self.root_fiber.dom_node = root_dom
+            self._root_node = root_dom if isinstance(root_dom, DOMElement) else None
+
+            # Wire up static_node after root_dom exists.
+            if isinstance(root_dom, DOMElement):
+                self._wire_static_node(root_dom)
+
             self._run_all_effects(self.root_fiber)
         self._on_commit()
 
-    def _build_dom(self, fiber: Fiber) -> DOMElement | TextNode | None:
-        """Recursively build the DOM tree from the fiber tree."""
+    def _wire_static_node(self, root_dom: DOMElement) -> None:
+        """Find internal_static child and assign it to root_dom.static_node.
+
+        Port of Ink's reconciler pattern for <Static> node tracking.
+        Uses ``internal_static`` field instead of style prop.
+        """
+        for child in root_dom.children:
+            if isinstance(child, DOMElement) and child.internal_static:
+                old = root_dom.static_node
+                root_dom.static_node = child
+                # Mark dirty when node is new or has different child count
+                if old is None or len(child.children) != len(
+                    getattr(old, "children", [])
+                ):
+                    root_dom.is_static_dirty = True
+                return
+
+    def _build_dom(
+        self, fiber: Fiber, is_inside_text: bool = False
+    ) -> DOMElement | TextNode | None:
+        """Recursively build the DOM tree from the fiber tree.
+
+        Port of Ink's ``createInstance`` + ``commitUpdate`` patterns.
+
+        Parameters
+        ----------
+        fiber : Fiber
+            The fiber to build DOM for.
+        is_inside_text : bool
+            Whether we're inside an ink-text element. Text nested
+            in text becomes ink-virtual-text (reconciler.ts lines 183–201).
+        """
         if fiber.node_type == "#text":
+            if not is_inside_text:
+                raise ValueError(
+                    f'Text string "{fiber.props.get("value", "")}" '
+                    "must be rendered inside <Text> component"
+                )
             return create_text_node(fiber.props.get("value", ""))
 
         if fiber.is_component:
-            # Components don't produce DOM nodes themselves - use children
+            # Components don't produce DOM nodes themselves — use children
             if len(fiber.child_fibers) == 1:
-                return self._build_dom(fiber.child_fibers[0])
+                return self._build_dom(fiber.child_fibers[0], is_inside_text)
             elif len(fiber.child_fibers) > 1:
-                wrapper = create_element("ink-box")
+                wrapper = create_node("ink-box")
                 for child_fiber in fiber.child_fibers:
-                    child_dom = self._build_dom(child_fiber)
+                    child_dom = self._build_dom(child_fiber, is_inside_text)
                     if child_dom:
                         append_child(wrapper, child_dom)
                 return wrapper
             return None
 
-        # Built-in element
-        el = create_element(fiber.node_type or "ink-box")
-        el.style = dict(fiber.props)
-        # Remove non-style props (keep _static for renderer)
-        for key in ("children",):
-            el.style.pop(key, None)
+        # Built-in element — port of reconciler.ts createInstance
+        node_type = fiber.node_type or "ink-box"
+
+        # isInsideText tracking (reconciler.ts lines 194–201)
+        if is_inside_text and node_type == "ink-box":
+            raise ValueError("<Box> can't be nested inside <Text> component")
+
+        if node_type == "ink-text" and is_inside_text:
+            node_type = "ink-virtual-text"
+
+        el = create_node(node_type)
+
+        # Apply props — port of reconciler.ts createInstance lines 206–238
+        props = fiber.props
+        style_props: dict[str, Any] = {}
+
+        for key, value in props.items():
+            if key == "children":
+                continue
+
+            if key == "internal_transform":
+                el.internal_transform = value
+                continue
+
+            if key == "internal_static":
+                el.internal_static = True
+                if self._root_node:
+                    self._root_node.is_static_dirty = True
+                    self._root_node.static_node = el
+                continue
+
+            if key == "internal_accessibility":
+                set_attribute(el, key, value)
+                continue
+
+            if key == "key":
+                continue
+
+            # Everything else goes into style
+            style_props[key] = value
+
+        set_style(el, style_props)
+        if el.yoga_node:
+            apply_styles(el.yoga_node, style_props)
+
+        # Determine child isInsideText context
+        child_is_inside_text = is_inside_text or node_type in (
+            "ink-text",
+            "ink-virtual-text",
+        )
 
         for child_fiber in fiber.child_fibers:
-            child_dom = self._build_dom(child_fiber)
+            child_dom = self._build_dom(child_fiber, child_is_inside_text)
             if child_dom:
                 append_child(el, child_dom)
 

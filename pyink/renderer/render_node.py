@@ -1,4 +1,4 @@
-"""Render pipeline matching Ink's render-node-to-output.ts and renderer.ts 1:1.
+"""Render pipeline matching Ink's render-node-to-output.ts and renderer.ts.
 
 Walks the DOM tree, applies yoga layout positions, renders borders,
 backgrounds, text with wrapping/truncation, and overflow clipping.
@@ -18,8 +18,88 @@ from pyink.renderer.borders import render_border
 from pyink.renderer.output import Output
 
 
+def render_node_to_screen_reader_output(
+    node: DOMElement,
+    *,
+    parent_role: str | None = None,
+    skip_static_elements: bool = False,
+) -> str:
+    """Render a DOM tree to screen-reader-friendly text output.
+
+    Port of Ink's ``renderNodeToScreenReaderOutput``
+    (render-node-to-output.ts lines 32–97).
+
+    Parameters
+    ----------
+    node : DOMElement
+        The root node to render.
+    parent_role : str or None
+        The accessibility role of the parent node.
+    skip_static_elements : bool
+        Whether to skip internal_static subtrees.
+
+    Returns
+    -------
+    str
+        Screen reader text output.
+    """
+    if skip_static_elements and node.internal_static:
+        return ""
+
+    # Check display none
+    if node.yoga_node:
+        try:
+            if node.yoga_node.get_display() == yoga.Display.None_:
+                return ""
+        except Exception:
+            pass
+
+    output = ""
+
+    if node.node_name == "ink-text":
+        output = squash_text_nodes(node)
+    elif node.node_name in ("ink-box", "ink-root"):
+        flex_dir = node.style.get("flex_direction", "column")
+        separator = " " if flex_dir in ("row", "row-reverse") else "\n"
+
+        child_nodes = list(node.children)
+        if flex_dir in ("row-reverse", "column-reverse"):
+            child_nodes = list(reversed(child_nodes))
+
+        parts = []
+        for child_node in child_nodes:
+            if isinstance(child_node, TextNode):
+                continue
+            if isinstance(child_node, DOMElement):
+                sr_output = render_node_to_screen_reader_output(
+                    child_node,
+                    parent_role=node.internal_accessibility.get("role"),
+                    skip_static_elements=skip_static_elements,
+                )
+                if sr_output:
+                    parts.append(sr_output)
+
+        output = separator.join(parts)
+
+    # Apply accessibility annotations
+    accessibility = node.internal_accessibility
+    if accessibility:
+        state = accessibility.get("state")
+        if state and isinstance(state, dict):
+            state_keys = [k for k, v in state.items() if v]
+            state_desc = ", ".join(state_keys)
+            if state_desc:
+                output = f"({state_desc}) {output}"
+
+        role = accessibility.get("role")
+        if role and role != parent_role:
+            output = f"{role}: {output}"
+
+    return output
+
+
 class RenderResult:
-    """Port of Ink's renderer.ts Result type."""
+    """Result of a render pass."""
 
     def __init__(self, output: str, output_height: int, static_output: str = "") -> None:
         self.output = output
@@ -27,12 +107,15 @@ class RenderResult:
         self.static_output = static_output
 
 
-def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
-    """Render the DOM tree.
+def renderer(
+    dom: DOMElement | None,
+    width: int | None = None,
+    is_screen_reader_enabled: bool = False,
+) -> RenderResult:
+    """Render the DOM tree with static/dynamic separation.
 
-    Returns the full rendered output. Static/dynamic separation is
-    handled at the app level by tracking which lines have already
-    been written to stdout.
+    Port of Ink's ``renderer.ts``. Branches between screen-reader
+    output and normal visual output.
 
     Parameters
     ----------
@@ -40,11 +123,14 @@ def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
         Root DOM element.
     width : int, optional
         Terminal width override.
+    is_screen_reader_enabled : bool
+        Use screen-reader-friendly text output.
 
     Returns
     -------
     RenderResult
-        Rendered output with height.
+        Contains ``output`` (dynamic), ``output_height``, and
+        ``static_output`` (content to write once to scrollback).
     """
     if dom is None or dom.yoga_node is None:
         return RenderResult("", 0)
@@ -57,48 +143,58 @@ def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
 
     compute_layout(dom, width, 500)
 
+    # Screen reader path (port of renderer.ts lines 14–35)
+    if is_screen_reader_enabled:
+        output = render_node_to_screen_reader_output(
+            dom, skip_static_elements=True
+        )
+        output_height = output.count("\n") + 1 if output else 0
+
+        static_output = ""
+        if dom.static_node and isinstance(dom.static_node, DOMElement):
+            static_output = render_node_to_screen_reader_output(
+                dom.static_node, skip_static_elements=False
+            )
+
+        return RenderResult(
+            output=output,
+            output_height=output_height,
+            static_output=f"{static_output}\n" if static_output else "",
+        )
+
     yn = dom.yoga_node
     output_width = int(yn.get_computed_width())
     output_height = int(yn.get_computed_height())
 
+    # Main render — skip static elements.
     output_buf = Output(output_width, output_height)
-    _render_node(dom, output_buf, 0, 0, transformers=[], skip_static=False)
+    _render_node(dom, output_buf, 0, 0, transformers=[], mode="dynamic")
+    generated_output, gen_height = output_buf.get()
 
-    generated_output = output_buf.get()
-
-    # Count how many lines belong to static nodes.
-    static_line_count = _count_static_lines(dom)
-
-    if static_line_count > 0:
-        lines = generated_output.split("\n")
-        static_lines = "\n".join(lines[:static_line_count])
-        dynamic_lines = "\n".join(lines[static_line_count:])
-        return RenderResult(
-            output=dynamic_lines,
-            output_height=len(lines) - static_line_count,
-            static_output=static_lines,
-        )
+    # Static render — use dom.static_node (separate DOM tree, like Ink).
+    static_output = ""
+    if dom.static_node and isinstance(dom.static_node, DOMElement) and dom.static_node.yoga_node:
+        sn = dom.static_node
+        sw = int(sn.yoga_node.get_computed_width()) or output_width
+        sh = int(sn.yoga_node.get_computed_height()) or 1
+        static_buf = Output(sw, sh)
+        _render_node(sn, static_buf, 0, 0, transformers=[], mode="all")
+        static_raw, _sh = static_buf.get()
+        static_raw = static_raw.rstrip("\n")
+        if static_raw.strip():
+            static_output = static_raw + "\n"
 
     return RenderResult(
         output=generated_output,
-        output_height=output_height,
+        output_height=gen_height,
+        static_output=static_output,
     )
-
-
-def _count_static_lines(dom: DOMElement) -> int:
-    """Count total rendered lines from _static nodes."""
-    count = 0
-    for child in dom.children:
-        if isinstance(child, DOMElement) and child.style.get("_static"):
-            yn = child.yoga_node
-            if yn:
-                count += int(yn.get_computed_height())
-    return count
 
 
 def render_to_string(dom: DOMElement | None, width: int | None = None) -> str:
     """Convenience wrapper — returns just the output string."""
-    return renderer(dom, width).output
+    result = renderer(dom, width)
+    return result.output
 
 
 def _render_node(
@@ -108,11 +204,15 @@ def _render_node(
     offset_y: int,
     *,
     transformers: list[Callable] | None = None,
-    skip_static: bool = False,
+    mode: str = "all",
 ) -> None:
     """Recursively render a DOM node to the output buffer.
 
-    Matches Ink's renderNodeToOutput() exactly.
+    Parameters
+    ----------
+    mode : str
+        ``"all"`` renders everything, ``"static"`` renders only
+        ``_static`` subtrees, ``"dynamic"`` skips ``_static`` nodes.
     """
     if isinstance(node, TextNode):
         return
@@ -125,8 +225,33 @@ def _render_node(
     if display == "none":
         return
 
-    if skip_static and node.style.get("_static"):
+    # Check display via yoga node too (for hideInstance/unhideInstance)
+    try:
+        if yn.get_display() == yoga.Display.None_:
+            return
+    except Exception:
+        pass
+
+    is_static = node.internal_static
+
+    if mode == "dynamic" and is_static:
         return
+
+    if mode == "static":
+        if is_static:
+            # Found a static subtree — render children normally.
+            mode = "all"
+        elif node.node_name in ("ink-root", "ink-box"):
+            # Not static — recurse to find static children.
+            for child in node.children:
+                _render_node(
+                    child, output, offset_x, offset_y,
+                    transformers=transformers,
+                    mode="static",
+                )
+            return
+        else:
+            return
 
     # Left and top positions are relative to parent (matching Ink)
     x = offset_x + int(yn.layout_left)
@@ -136,9 +261,8 @@ def _render_node(
 
     # Transformers chain (matching Ink: prepend internal_transform)
     new_transformers = list(transformers or [])
-    transform_fn = node.style.get("_transform")
-    if callable(transform_fn):
-        new_transformers = [transform_fn] + new_transformers
+    if callable(node.internal_transform):
+        new_transformers = [node.internal_transform] + new_transformers
 
     if node.node_name == "ink-text":
         text = squash_text_nodes(node)
@@ -153,22 +277,13 @@ def _render_node(
 
             text = _apply_padding_to_text(node, text)
 
-            # Collect text styles
+            # Collect text styles and apply to the full text block
             style_props = _collect_text_styles(node)
+            if style_props and text:
+                text = style_text(text, **style_props)
 
-            # Apply styles and write each line
-            lines = text.split("\n")
-            for i, line in enumerate(lines):
-                if y + i >= output.height:
-                    break
-                # Apply transformers
-                transformed = line
-                for fn in new_transformers:
-                    transformed = fn(transformed, i)
-                # Apply text styles
-                if style_props and transformed:
-                    transformed = style_text(transformed, **style_props)
-                output.write(x, y + i, transformed)
+            # Write text with transformers (Ink passes transformers to output.write)
+            output.write(x, y, text, transformers=new_transformers)
 
         return
 
@@ -199,7 +314,7 @@ def _render_node(
             _render_node(
                 child, output, x, y,
                 transformers=new_transformers,
-                skip_static=skip_static,
+                mode=mode,
             )
 
         if clipped:
@@ -232,7 +347,7 @@ def _render_background(
 
     bg_line = style_text(" " * content_w, background_color=bg)
     for row in range(content_h):
-        output.write(x + left_bw, y + top_bw + row, bg_line)
+        output.write(x + left_bw, y + top_bw + row, bg_line, transformers=[])
 
 
 def _apply_padding_to_text(node: DOMElement, text: str) -> str:
@@ -311,7 +426,6 @@ def _wrap_text_with_mode(text: str, max_width: int, wrap_mode: str) -> str:
     elif wrap_mode == "hard":
         return "\n".join(_wrap_text_hard(text, max_width))
     else:
-        # Default "wrap": word wrap
         return "\n".join(_wrap_text(text, max_width))
 
 

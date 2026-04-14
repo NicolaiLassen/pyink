@@ -24,9 +24,12 @@ from pyink.input.reader import InputManager
 from pyink.reconciler import Reconciler
 from pyink.renderer.render_node import renderer
 from pyink.terminal import (
+    BSU,
     CLEAR_TERMINAL,
+    ESU,
     LogUpdate,
     get_terminal_size,
+    should_synchronize,
 )
 from pyink.vnode import VNode
 
@@ -115,7 +118,6 @@ class App:
         self._last_output_height = 0
         self._last_terminal_width = get_terminal_size()[0]
         self._full_static_output = ""
-        self._last_static_line_count = 0
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._exit_event: asyncio.Event | None = None
@@ -148,7 +150,26 @@ class App:
     # ── Port of ink.tsx onRender (lines 520-630) ──
 
     def _on_commit(self) -> None:
-        """Called by reconciler after each commit. Schedules throttled render."""
+        """Called by reconciler after each commit.
+
+        Port of Ink's resetAfterCommit (reconciler.ts lines 160–182):
+        - Emit layout listeners
+        - If static dirty → render immediately (bypass throttle)
+        - Otherwise → schedule throttled render
+        """
+        # Emit layout listeners on the root DOM node
+        dom = self._get_root_dom()
+        if dom is not None:
+            from pyink.dom import emit_layout_listeners
+
+            emit_layout_listeners(dom)
+
+            # Static output needs immediate render (Ink lines 170–177)
+            if dom.is_static_dirty:
+                dom.is_static_dirty = False
+                self._on_render()
+                return
+
         if self._loop and not self._render_pending:
             self._render_pending = True
             if self._render_handle:
@@ -160,6 +181,14 @@ class App:
                 )
             else:
                 self._render_handle = self._loop.call_soon(self._on_render)
+
+    def _get_root_dom(self) -> DOMElement | None:
+        """Get the root DOM element from the reconciler."""
+        if self._reconciler.root_fiber and isinstance(
+            self._reconciler.root_fiber.dom_node, DOMElement
+        ):
+            return self._reconciler.root_fiber.dom_node
+        return None
 
     def _on_render(self) -> None:
         """Port of ink.tsx onRender() lines 520-630."""
@@ -177,19 +206,21 @@ class App:
             return
 
         width = get_terminal_size()[0]
-        result = renderer(dom, width=width)
+        result = renderer(
+            dom,
+            width=width,
+            is_screen_reader_enabled=self._is_screen_reader_enabled,
+        )
 
-        # Only pass NEW static lines to the frame renderer.
-        new_static = ""
-        if result.static_output:
-            lines = result.static_output.split("\n")
-            if len(lines) > self._last_static_line_count:
-                new_lines = lines[self._last_static_line_count:]
-                new_static = "\n".join(new_lines) + "\n"
-                self._last_static_line_count = len(lines)
+        # Only pass static output when the static node is dirty
+        # (new items added). Reset the flag after reading.
+        static_output = ""
+        if dom.is_static_dirty and result.static_output:
+            static_output = result.static_output
+            dom.is_static_dirty = False
 
         self._render_interactive_frame(
-            result.output, result.output_height, new_static,
+            result.output, result.output_height, static_output,
         )
 
     # ── Port of ink.tsx renderInteractiveFrame (lines 1030-1095) ──
@@ -228,8 +259,12 @@ class App:
             self._is_unmounting,
         )
 
+        sync = self._should_sync()
+
         if should_clear:
             # Full terminal clear — prepend all previously written static output.
+            if sync:
+                self._stdout_write(BSU)
             self._stdout_write(
                 CLEAR_TERMINAL + self._full_static_output + output,
             )
@@ -237,15 +272,21 @@ class App:
             self._last_output_to_render = output_to_render
             self._last_output_height = output_height
             self._log.sync(output_to_render)
+            if sync:
+                self._stdout_write(ESU)
             return
 
         if has_static_output:
             # Clear dynamic output, write static to scrollback, redraw dynamic.
+            if sync:
+                self._stdout_write(BSU)
             self._log.clear()
             self._stdout_write(static_output)
             self._full_static_output += static_output
             self._log(output_to_render)
-        elif output != self._last_output:
+            if sync:
+                self._stdout_write(ESU)
+        elif output != self._last_output or self._log.is_cursor_dirty():
             self._log(output_to_render)
 
         self._last_output = output
@@ -459,12 +500,64 @@ class App:
     def _handle_sigwinch(self, signum: int, frame: object) -> None:
         self._resized()
 
+    def _should_sync(self) -> bool:
+        """Check if synchronized output should be used."""
+        return should_synchronize(self.stdout)
+
     def _stdout_write(self, data: str) -> None:
         try:
             self.stdout.write(data)
             self.stdout.flush()
         except (BrokenPipeError, OSError):
             pass
+
+    def write_to_stdout(self, data: str) -> None:
+        """Write data to stdout while preserving Ink output.
+
+        Port of Ink's writeToStdout (ink.tsx lines 665–692).
+        """
+        if self._is_unmounted:
+            return
+
+        sync = self._should_sync()
+        if sync:
+            self._stdout_write(BSU)
+
+        self._log.clear()
+        self._stdout_write(data)
+        # Restore last output
+        if self._last_output_to_render:
+            self._log.set_cursor_position(self._cursor_position)
+            self._log(self._last_output_to_render)
+
+        if sync:
+            self._stdout_write(ESU)
+
+    def write_to_stderr(self, data: str) -> None:
+        """Write data to stderr while preserving Ink output.
+
+        Port of Ink's writeToStderr (ink.tsx lines 694–722).
+        """
+        if self._is_unmounted:
+            return
+
+        sync = self._should_sync()
+        if sync:
+            self._stdout_write(BSU)
+
+        self._log.clear()
+        try:
+            self.stderr.write(data)
+            self.stderr.flush()
+        except (BrokenPipeError, OSError):
+            pass
+        # Restore last output
+        if self._last_output_to_render:
+            self._log.set_cursor_position(self._cursor_position)
+            self._log(self._last_output_to_render)
+
+        if sync:
+            self._stdout_write(ESU)
 
     def rerender(self, vnode: VNode) -> None:
         """Re-render the application with a new root VNode.

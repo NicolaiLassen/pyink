@@ -1,3 +1,9 @@
+"""Layout computation engine using pyyoga (Yoga).
+
+Port of Ink's layout computation patterns. Works with the DOM layer
+where yoga nodes are created and measure funcs are set at node
+creation time (in ``dom.py``).
+"""
 from __future__ import annotations
 
 import re
@@ -131,7 +137,11 @@ def _measure_text(
 
 
 def build_yoga_tree(element: DOMElement) -> None:
-    """Recursively create yoga nodes and attach them to DOMElements.
+    """Recursively apply styles and rebuild yoga child relationships.
+
+    Yoga nodes are already created and measure funcs set in ``dom.py``
+    at node creation time. This function ensures styles are applied
+    and parent-child yoga relationships are correct for layout.
 
     Parameters
     ----------
@@ -139,20 +149,20 @@ def build_yoga_tree(element: DOMElement) -> None:
         The root DOM element to start building from.
     """
     if element.yoga_node is None:
-        element.yoga_node = yoga.Node()
+        return
 
     yn = element.yoga_node
 
     # Apply style props to yoga node
     apply_styles(yn, element.style)
 
-    # Remove all existing children from yoga
+    # Remove all existing yoga children and re-add in DOM order
     yn.remove_all_children()
 
     if element.node_name == "ink-text":
-        # Text elements get a measure function
-        # pyyoga signature: (width, width_mode, height, height_mode) -> (w, h)
-        el = element  # capture in closure
+        # Text elements use their measure func (set at creation in dom.py).
+        # Also set it here in case it was cleared or this is a rebuilt node.
+        el = element
         yn.set_measure_func(
             lambda w, wm, h, hm: _measure_text(el, w, wm, h, hm)
         )
@@ -166,7 +176,7 @@ def build_yoga_tree(element: DOMElement) -> None:
 
 
 def compute_layout(
-    root: DOMElement, terminal_width: int, terminal_height: int
+    root: DOMElement, terminal_width: int, terminal_height: int | None = None
 ) -> None:
     """Build yoga tree and compute layout for the entire DOM tree.
 
@@ -176,8 +186,9 @@ def compute_layout(
         The root DOM element.
     terminal_width : int
         Width of the terminal in columns.
-    terminal_height : int
-        Height of the terminal in rows.
+    terminal_height : int or None, optional
+        Height of the terminal in rows. Currently unused by Yoga
+        (Ink doesn't set height on root).
     """
     build_yoga_tree(root)
     if root.yoga_node:

@@ -108,7 +108,8 @@ def Static(
 ) -> VNode:
     """Render permanent output that doesn't re-render. Matches Ink's <Static>.
 
-    Can use items + render_item pattern (like Ink) or direct children.
+    Only renders NEW items since the last render. Previously rendered
+    items are already in terminal scrollback.
 
     Parameters
     ----------
@@ -127,10 +128,44 @@ def Static(
     VNode
         A virtual node representing the static container.
     """
-    props["_static"] = True
+    from pyink.component import component
+    from pyink.hooks.use_effect import use_effect
+    from pyink.hooks.use_state import use_state
+
+    @component
+    def _static_inner(items, render_item, style):
+        index, set_index = use_state(0)
+
+        # Only render items from index onward (new items).
+        items_to_render = items[index:] if items else []
+
+        def sync_index():
+            set_index(len(items) if items else 0)
+
+        use_effect(sync_index, (len(items) if items else 0,))
+
+        rendered = []
+        if render_item and items_to_render:
+            rendered = [render_item(item, index + i) for i, item in enumerate(items_to_render)]
+
+        return _make_element(
+            "ink-box",
+            *rendered,
+            internal_static=True,
+            position="absolute",
+            flex_direction="column",
+            **style,
+        )
+
+    # Extract style props to pass through.
+    style = {k: v for k, v in props.items() if k not in ("items", "render_item")}
+
     if items is not None and render_item is not None:
-        rendered_children = [render_item(item, i) for i, item in enumerate(items)]
-        return _make_element("ink-box", *rendered_children, **props)
+        return _static_inner(items=items, render_item=render_item, style=style)
+
+    # Direct children mode — no tracking needed, render all.
+    props["internal_static"] = True
+    props["position"] = "absolute"
     return _make_element("ink-box", *children, **props)
 
 
@@ -158,5 +193,9 @@ def Transform(
     VNode
         A virtual node representing the transform container.
     """
-    props["_transform"] = transform
-    return _make_element("ink-box", *children, **props)
+    props["internal_transform"] = transform
+    # Match Ink's Transform: flex_grow=0, flex_shrink=1, flex_direction=row
+    props.setdefault("flex_grow", 0)
+    props.setdefault("flex_shrink", 1)
+    props.setdefault("flex_direction", "row")
+    return _make_element("ink-text", *children, **props)

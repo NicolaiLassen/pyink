@@ -1,17 +1,13 @@
+"""useCursor hook — control terminal cursor position.
+
+Port of Ink's ``src/hooks/use-cursor.ts``.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 
+from pyink.cursor_helpers import CursorPosition
 from pyink.hooks.context import get_current_app
-
-
-@dataclass
-class CursorPosition:
-    """Cursor position relative to Ink output origin."""
-
-    x: int
-    y: int
 
 
 def use_cursor() -> dict[str, Callable]:

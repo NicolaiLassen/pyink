@@ -1,9 +1,8 @@
 """Virtual output class matching Ink's output.ts 1:1.
 
 Uses a per-character grid (like Ink's StyledChar[][]) where each cell holds
-a single visible character plus its ANSI style prefix. This is the key to
-correct rendering - ANSI strings are decomposed into individual characters,
-positioned on the grid, then reassembled.
+a single visible character plus its ANSI style prefix. Supports transformers,
+clipping, and wide characters.
 """
 from __future__ import annotations
 
@@ -28,19 +27,7 @@ def _char_width(ch: str) -> int:
 def _tokenize_styled(text: str) -> list[tuple[str, str]]:
     """Decompose a styled string into (styles_prefix, char) pairs.
 
-    E.g. "\\x1b[31mAB\\x1b[0m" -> [("\\x1b[31m", "A"), ("\\x1b[31m", "B")]
-
-    This matches Ink's styledCharsFromTokens(tokenize(line)).
-
-    Parameters
-    ----------
-    text : str
-        A string potentially containing ANSI escape sequences.
-
-    Returns
-    -------
-    list[tuple[str, str]]
-        Each tuple is ``(accumulated_style_prefix, character)``.
+    Port of Ink's ``styledCharsFromTokens(tokenize(line))``.
     """
     result: list[tuple[str, str]] = []
     parts = _ANSI_RE.split(text)
@@ -51,13 +38,11 @@ def _tokenize_styled(text: str) -> list[tuple[str, str]]:
         if not part:
             continue
         if _ANSI_RE.fullmatch(part):
-            # This is an ANSI escape sequence
             if part == RESET:
                 current_styles.clear()
             else:
                 current_styles.append(part)
         else:
-            # This is regular text - emit each character with current styles
             prefix = "".join(current_styles)
             for ch in part:
                 result.append((prefix, ch))
@@ -74,18 +59,41 @@ def _string_width(text: str) -> int:
     return w
 
 
-class StyledChar:
-    """A single character with its ANSI style prefix.
+class _OutputCaches:
+    """Cache for string widths and styled chars. Port of Ink's OutputCaches."""
 
-    Parameters
-    ----------
-    value : str, optional
-        The visible character (default ``" "``).
-    styles : str, optional
-        Accumulated ANSI style prefix (default ``""``).
-    full_width : bool, optional
-        Whether this is a wide (CJK) character (default ``False``).
-    """
+    def __init__(self) -> None:
+        self._widths: dict[str, int] = {}
+        self._block_widths: dict[str, int] = {}
+        self._styled_chars: dict[str, list[tuple[str, str]]] = {}
+
+    def get_styled_chars(self, line: str) -> list[tuple[str, str]]:
+        cached = self._styled_chars.get(line)
+        if cached is None:
+            cached = _tokenize_styled(line)
+            self._styled_chars[line] = cached
+        return cached
+
+    def get_string_width(self, text: str) -> int:
+        cached = self._widths.get(text)
+        if cached is None:
+            cached = _string_width(text)
+            self._widths[text] = cached
+        return cached
+
+    def get_widest_line(self, text: str) -> int:
+        cached = self._block_widths.get(text)
+        if cached is None:
+            line_width = 0
+            for line in text.split("\n"):
+                line_width = max(line_width, self.get_string_width(line))
+            cached = line_width
+            self._block_widths[text] = cached
+        return cached
+
+
+class StyledChar:
+    """A single character with its ANSI style prefix."""
     __slots__ = ("value", "styles", "full_width")
 
     def __init__(self, value: str = " ", styles: str = "", full_width: bool = False):
@@ -99,11 +107,15 @@ class StyledChar:
         return f"{self.styles}{self.value}{RESET}"
 
 
-class Output:
-    """Virtual terminal buffer matching Ink's Output class exactly.
+# Type alias for output transformers (port of Ink's OutputTransformer)
+OutputTransformer = Any  # Callable[[str, int], str]
 
-    Uses a StyledChar[][] grid. Each cell holds one character with its
-    ANSI styles. Handles wide characters, clipping, and transformers.
+
+class Output:
+    """Virtual terminal buffer matching Ink's Output class.
+
+    Uses a StyledChar[][] grid. Supports transformers, clipping,
+    and wide characters.
 
     Parameters
     ----------
@@ -117,9 +129,19 @@ class Output:
         self.width = width
         self.height = height
         self._operations: list[tuple[str, Any]] = []
+        self._caches = _OutputCaches()
 
-    def write(self, x: int, y: int, text: str) -> None:
+    def write(
+        self,
+        x: int,
+        y: int,
+        text: str,
+        *,
+        transformers: list[OutputTransformer] | None = None,
+    ) -> None:
         """Write styled text at position (x, y).
+
+        Port of Ink's Output.write (output.ts lines 105–124).
 
         Parameters
         ----------
@@ -129,24 +151,26 @@ class Output:
             Row position.
         text : str
             Styled text to write (may contain newlines).
+        transformers : list, optional
+            Output transformer functions to apply per-line.
         """
         if not text:
             return
-        self._operations.append(("write", (x, y, text)))
+        self._operations.append(
+            ("write", (x, y, text, transformers or []))
+        )
 
-    def clip(self, x1: int, x2: int, y1: int, y2: int) -> None:
+    def clip(
+        self,
+        x1: int | None = None,
+        x2: int | None = None,
+        y1: int | None = None,
+        y2: int | None = None,
+    ) -> None:
         """Push a clipping region.
 
-        Parameters
-        ----------
-        x1 : int
-            Left boundary (inclusive).
-        x2 : int
-            Right boundary (exclusive).
-        y1 : int
-            Top boundary (inclusive).
-        y2 : int
-            Bottom boundary (exclusive).
+        Port of Ink's Output.clip (output.ts lines 126–133).
+        Values of ``None`` mean no clip on that axis.
         """
         self._operations.append(("clip", (x1, x2, y1, y2)))
 
@@ -154,27 +178,25 @@ class Output:
         """Pop the most recent clipping region."""
         self._operations.append(("unclip", None))
 
-    def get(self) -> str:
+    def get(self) -> tuple[str, int]:
         """Convert the buffer to final string output.
 
-        Matches Ink's Output.get() - initializes a StyledChar grid,
-        processes all operations, handles clipping and wide characters,
-        then converts to string.
+        Port of Ink's Output.get() (output.ts lines 139–318).
 
         Returns
         -------
-        str
-            The rendered output as a plain string with embedded ANSI codes.
+        tuple[str, int]
+            ``(output_string, height)``
         """
-        # Initialize grid with spaces (matching Ink's initialization)
+        # Initialize grid with spaces
         grid: list[list[StyledChar]] = []
-        for y in range(self.height):
+        for _y in range(self.height):
             row: list[StyledChar] = []
-            for x in range(self.width):
+            for _x in range(self.width):
                 row.append(StyledChar(" ", "", False))
             grid.append(row)
 
-        clips: list[tuple[int, int, int, int]] = []
+        clips: list[tuple[int | None, int | None, int | None, int | None]] = []
 
         for op_type, data in self._operations:
             if op_type == "clip":
@@ -185,7 +207,7 @@ class Output:
                     clips.pop()
                 continue
 
-            x, y, text = data
+            x, y, text, transformers = data
             lines = text.split("\n")
 
             clip = clips[-1] if clips else None
@@ -193,13 +215,19 @@ class Output:
             if clip:
                 cx1, cx2, cy1, cy2 = clip
 
+                clip_h = cx1 is not None and cx2 is not None
+                clip_v = cy1 is not None and cy2 is not None
+
                 # Skip if entirely outside clip region
-                width = _string_width(text)
-                if x + width < cx1 or x > cx2:
-                    continue
-                height = len(lines)
-                if y + height < cy1 or y > cy2:
-                    continue
+                if clip_h:
+                    width = self._caches.get_widest_line(text)
+                    if x + width < cx1 or x > cx2:  # type: ignore
+                        continue
+
+                if clip_v:
+                    height = len(lines)
+                    if y + height < cy1 or y > cy2:  # type: ignore
+                        continue
 
             offset_y = 0
             for line_idx, line in enumerate(lines):
@@ -211,14 +239,19 @@ class Output:
                 # Apply clip vertically
                 if clip:
                     cx1, cx2, cy1, cy2 = clip
-                    if row_idx < cy1 or row_idx >= cy2:
-                        offset_y += 1
-                        continue
+                    if cy1 is not None and cy2 is not None:
+                        if row_idx < cy1 or row_idx >= cy2:
+                            offset_y += 1
+                            continue
 
                 current_row = grid[row_idx]
 
+                # Apply transformers (Ink output.ts line 238-239)
+                for transformer in transformers:
+                    line = transformer(line, line_idx)
+
                 # Tokenize the line into styled characters
-                characters = _tokenize_styled(line)
+                characters = self._caches.get_styled_chars(line)
                 if not characters:
                     offset_y += 1
                     continue
@@ -228,20 +261,20 @@ class Output:
                 # Apply horizontal clipping
                 if clip:
                     cx1, cx2, cy1, cy2 = clip
-                    # Skip characters before clip start
-                    clipped_chars: list[tuple[str, str]] = []
-                    pos = x
-                    for styles, ch in characters:
-                        cw = _char_width(ch)
-                        if pos + cw <= cx1:
+                    if cx1 is not None and cx2 is not None:
+                        clipped_chars: list[tuple[str, str]] = []
+                        pos = x
+                        for styles, ch in characters:
+                            cw = _char_width(ch)
+                            if pos + cw <= cx1:
+                                pos += cw
+                                continue
+                            if pos >= cx2:
+                                break
+                            clipped_chars.append((styles, ch))
                             pos += cw
-                            continue
-                        if pos >= cx2:
-                            break
-                        clipped_chars.append((styles, ch))
-                        pos += cw
-                    characters = clipped_chars
-                    offset_x = max(x, cx1)
+                        characters = clipped_chars
+                        offset_x = max(x, cx1)
 
                 # Wide character boundary cleanup (matching Ink)
                 if (
@@ -286,39 +319,13 @@ class Output:
             line = _styled_row_to_string(row).rstrip()
             result_lines.append(line)
 
-        # Remove trailing empty lines
-        while result_lines and not result_lines[-1]:
-            result_lines.pop()
+        generated_output = "\n".join(result_lines)
 
-        return "\n".join(result_lines)
-
-    def get_height(self) -> int:
-        """Return the number of output lines.
-
-        Returns
-        -------
-        int
-            Line count of the rendered output, or 0 if empty.
-        """
-        output = self.get()
-        if not output:
-            return 0
-        return output.count("\n") + 1
+        return (generated_output, len(grid))
 
 
 def _styled_row_to_string(row: list[StyledChar]) -> str:
-    """Convert a row of StyledChars to a string, coalescing adjacent same-style runs.
-
-    Parameters
-    ----------
-    row : list[StyledChar]
-        A single row of styled character cells.
-
-    Returns
-    -------
-    str
-        The row rendered as a string with ANSI style sequences.
-    """
+    """Convert a row of StyledChars to a string."""
     if not row:
         return ""
 
@@ -327,11 +334,9 @@ def _styled_row_to_string(row: list[StyledChar]) -> str:
 
     for cell in row:
         if cell.value == "":
-            # Placeholder for wide character - skip
             continue
 
         if cell.styles != current_styles:
-            # Style changed - close old, open new
             if current_styles:
                 result.append(RESET)
             if cell.styles:
@@ -340,7 +345,6 @@ def _styled_row_to_string(row: list[StyledChar]) -> str:
 
         result.append(cell.value)
 
-    # Close any open style
     if current_styles:
         result.append(RESET)
 
