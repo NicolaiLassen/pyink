@@ -61,6 +61,26 @@ class App:
     """1:1 port of Ink's Ink class from ink.tsx.
 
     Manages the event loop, reconciler, input handling, terminal rendering.
+
+    Parameters
+    ----------
+    root_vnode : VNode
+        The root virtual node to render.
+    stdout : Any, optional
+        Writable stream for output (default ``sys.stdout``).
+    stderr : Any, optional
+        Writable stream for errors (default ``sys.stderr``).
+    stdin : Any, optional
+        Readable stream for input (default ``sys.stdin``).
+    exit_on_ctrl_c : bool, optional
+        Whether Ctrl+C should trigger exit (default ``True``).
+    use_alt_screen : bool, optional
+        Whether to use the alternate terminal screen (default ``False``).
+    max_fps : int, optional
+        Maximum render frames per second (default ``30``).
+    is_screen_reader_enabled : bool or None, optional
+        Force screen-reader mode on/off, or auto-detect from
+        ``INK_SCREEN_READER`` environment variable when ``None``.
     """
 
     def __init__(
@@ -94,6 +114,7 @@ class App:
         self._last_output_to_render = ""
         self._last_output_height = 0
         self._last_terminal_width = get_terminal_size()[0]
+        self._full_static_output = ""
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._exit_event: asyncio.Event | None = None
@@ -154,29 +175,40 @@ class App:
         if not isinstance(dom, DOMElement):
             return
 
-        # Line 533: render(this.rootNode, this.isScreenReaderEnabled)
         width = get_terminal_size()[0]
         result = renderer(dom, width=width)
-        output = result.output
-        output_height = result.output_height
 
-        # Lines 625-630: renderInteractiveFrame (interactive mode)
-        self._render_interactive_frame(output, output_height)
+        self._render_interactive_frame(
+            result.output, result.output_height, result.static_output,
+        )
 
     # ── Port of ink.tsx renderInteractiveFrame (lines 1030-1095) ──
 
     def _render_interactive_frame(
         self, output: str, output_height: int, static_output: str = ""
     ) -> None:
-        """Port of ink.tsx renderInteractiveFrame() lines 1030-1095."""
-        is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
+        """Render a frame, writing static output once and dynamic via log-update.
 
-        # Line 1040-1042: detect fullscreen, build outputToRender
+        Static output is written directly to stdout and accumulated in
+        ``_full_static_output``. It becomes terminal scrollback and is
+        never redrawn. Dynamic output is managed by log-update which
+        erases and rewrites only the dynamic portion.
+
+        Parameters
+        ----------
+        output : str
+            The dynamic (re-drawable) portion of the frame.
+        output_height : int
+            Number of lines in *output*.
+        static_output : str, optional
+            One-shot static content that scrolls off (default ``""``).
+        """
+        has_static = static_output and static_output.strip()
+        is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
         viewport_rows = get_terminal_size()[1] if is_tty else 24
         is_fullscreen = is_tty and output_height >= viewport_rows
         output_to_render = output if is_fullscreen else output + "\n"
 
-        # Line 1044: shouldClearTerminalForFrame
         should_clear = _should_clear_terminal_for_frame(
             is_tty,
             viewport_rows,
@@ -185,15 +217,20 @@ class App:
             self._is_unmounting,
         )
 
-        if should_clear:
-            # Lines 1052-1071: full terminal clear
-            self._stdout_write(CLEAR_TERMINAL + output)
+        if has_static:
+            # Write static output once — it scrolls off naturally.
+            self._log.clear()
+            self._stdout_write(static_output + "\n")
+            self._full_static_output += static_output + "\n"
+            self._log(output_to_render)
+        elif should_clear:
+            self._stdout_write(
+                CLEAR_TERMINAL + self._full_static_output + output,
+            )
             self._log.sync(output_to_render)
         elif output != self._last_output:
-            # Lines 1087-1089: normal incremental update via log-update
             self._log(output_to_render)
 
-        # Lines 1092-1094: update tracking state
         self._last_output = output
         self._last_output_to_render = output_to_render
         self._last_output_height = output_height
@@ -218,11 +255,23 @@ class App:
     # ── Input handling ──
 
     def _handle_internal_input(self, input_str: str, key: Key) -> bool:
-        """Internal handler — runs before user useInput listeners.
+        """Internal handler -- runs before user useInput listeners.
 
-        Returns True to suppress the event (prevent user handlers from seeing it).
         Matches Ink's Ctrl+C filtering: when exitOnCtrlC is true, Ctrl+C
         never reaches useInput handlers.
+
+        Parameters
+        ----------
+        input_str : str
+            The printable character(s) from the keypress.
+        key : Key
+            Parsed key with modifier flags.
+
+        Returns
+        -------
+        bool
+            ``True`` to suppress the event (prevent user handlers from
+            seeing it), ``False`` to let it propagate.
         """
         # Ctrl+C: exit and suppress from user handlers
         if key.ctrl and input_str == "c" and self._exit_on_ctrl_c:
@@ -240,17 +289,47 @@ class App:
     # ── App lifecycle ──
 
     def request_exit(self, code: int = 0) -> None:
+        """Request application exit with the given exit code.
+
+        Parameters
+        ----------
+        code : int, optional
+            Process exit code (default ``0``).
+        """
         self._exit_code = code
         self._is_unmounting = True
         if self._exit_event:
             self._exit_event.set()
 
     def set_cursor_position(self, position: CursorPosition | None) -> None:
+        """Set the logical cursor position for the current frame.
+
+        Parameters
+        ----------
+        position : CursorPosition or None
+            The cursor position, or ``None`` to hide the cursor.
+        """
         self._cursor_position = position
 
     def add_timer(
         self, interval: float, callback: Callable, *, repeating: bool = False
     ) -> int:
+        """Schedule a timer callback.
+
+        Parameters
+        ----------
+        interval : float
+            Delay in seconds before the callback fires.
+        callback : Callable
+            The function to call.
+        repeating : bool, optional
+            If ``True``, reschedule after each invocation (default ``False``).
+
+        Returns
+        -------
+        int
+            A timer ID that can be passed to ``remove_timer``.
+        """
         timer_id = self._timer_counter
         self._timer_counter += 1
         if self._loop is None:
@@ -268,6 +347,13 @@ class App:
         return timer_id
 
     def remove_timer(self, timer_id: int) -> None:
+        """Cancel a previously scheduled timer.
+
+        Parameters
+        ----------
+        timer_id : int
+            The ID returned by ``add_timer``.
+        """
         handle = self._timers.pop(timer_id, None)
         if handle:
             handle.cancel()
@@ -275,7 +361,13 @@ class App:
     # ── Port of ink.tsx run cycle ──
 
     async def run(self) -> int:
-        """Run the application event loop."""
+        """Run the application event loop.
+
+        Returns
+        -------
+        int
+            The exit code set via ``request_exit``.
+        """
         self._loop = asyncio.get_running_loop()
         self._exit_event = asyncio.Event()
         self._reconciler.set_loop(self._loop)
@@ -358,6 +450,13 @@ class App:
             pass
 
     def rerender(self, vnode: VNode) -> None:
+        """Re-render the application with a new root VNode.
+
+        Parameters
+        ----------
+        vnode : VNode
+            The new root virtual node.
+        """
         self._root_vnode = vnode
         if self._reconciler.root_fiber:
             self._reconciler.root_fiber.children_vnodes = [vnode]
@@ -367,6 +466,13 @@ class App:
         self.request_exit(0)
 
     def wait_until_exit(self) -> asyncio.Future:
+        """Return a future that resolves with the exit code when the app exits.
+
+        Returns
+        -------
+        asyncio.Future
+            Resolves to the integer exit code.
+        """
         future: asyncio.Future = asyncio.get_event_loop().create_future()
 
         def on_exit():
@@ -384,7 +490,18 @@ class App:
         return self
 
     def on_resize(self, handler: Callable[[], None]) -> Callable[[], None]:
-        """Register a resize callback. Returns removal function."""
+        """Register a resize callback.
+
+        Parameters
+        ----------
+        handler : Callable[[], None]
+            Callback invoked on terminal resize.
+
+        Returns
+        -------
+        Callable[[], None]
+            A removal function that unregisters the handler.
+        """
         self._resize_handlers = getattr(self, "_resize_handlers", [])
         self._resize_handlers.append(handler)
 
@@ -400,24 +517,47 @@ class App:
 # ── Port of render.ts (public API) ──
 
 class Instance:
-    """Port of Ink's Instance type from render.ts."""
+    """Port of Ink's Instance type from render.ts.
+
+    Parameters
+    ----------
+    app : App
+        The underlying application instance to wrap.
+    """
 
     def __init__(self, app: App) -> None:
         self._app = app
 
     def rerender(self, vnode: VNode) -> None:
+        """Re-render with a new root VNode.
+
+        Parameters
+        ----------
+        vnode : VNode
+            The new root virtual node.
+        """
         self._app.rerender(vnode)
 
     def unmount(self) -> None:
+        """Unmount the application."""
         self._app.unmount()
 
     def clear(self) -> None:
+        """Clear the current log-update output."""
         self._app._log.clear()
 
     def cleanup(self) -> None:
+        """Run full cleanup (terminal restore, timers, etc.)."""
         self._app._cleanup()
 
     async def wait_until_exit(self) -> int:
+        """Wait for the application to exit.
+
+        Returns
+        -------
+        int
+            The exit code.
+        """
         return await self._app.wait_until_exit()
 
 
@@ -432,7 +572,33 @@ def render(
     max_fps: int = 30,
     is_screen_reader_enabled: bool | None = None,
 ) -> Instance | None:
-    """Port of Ink's render() from render.ts."""
+    """Port of Ink's render() from render.ts.
+
+    Parameters
+    ----------
+    element : VNode
+        The root virtual node to render.
+    stdout : Any, optional
+        Writable stream for output.
+    stderr : Any, optional
+        Writable stream for errors.
+    stdin : Any, optional
+        Readable stream for input.
+    exit_on_ctrl_c : bool, optional
+        Exit on Ctrl+C (default ``True``).
+    use_alt_screen : bool, optional
+        Use alternate terminal screen (default ``False``).
+    max_fps : int, optional
+        Maximum render frames per second (default ``30``).
+    is_screen_reader_enabled : bool or None, optional
+        Force screen-reader mode on/off or auto-detect.
+
+    Returns
+    -------
+    Instance or None
+        An ``Instance`` handle when called inside a running event loop,
+        or ``None`` when the app runs synchronously to completion.
+    """
     app = App(
         element,
         stdout=stdout,
@@ -464,7 +630,24 @@ async def render_async(
     exit_on_ctrl_c: bool = True,
     max_fps: int = 30,
 ) -> Instance:
-    """Async version of render."""
+    """Async version of render.
+
+    Parameters
+    ----------
+    element : VNode
+        The root virtual node to render.
+    stdout : Any, optional
+        Writable stream for output.
+    exit_on_ctrl_c : bool, optional
+        Exit on Ctrl+C (default ``True``).
+    max_fps : int, optional
+        Maximum render frames per second (default ``30``).
+
+    Returns
+    -------
+    Instance
+        A handle for re-rendering, unmounting, or waiting for exit.
+    """
     app = App(
         element,
         stdout=stdout,
@@ -481,7 +664,20 @@ def render_to_string_sync(
     *,
     columns: int = 80,
 ) -> str:
-    """Port of Ink's renderToString() from render-to-string.ts."""
+    """Port of Ink's renderToString() from render-to-string.ts.
+
+    Parameters
+    ----------
+    element : VNode
+        The root virtual node to render.
+    columns : int, optional
+        Simulated terminal width (default ``80``).
+
+    Returns
+    -------
+    str
+        The rendered output as a plain string with ANSI codes.
+    """
     from pyink.reconciler import Reconciler
     from pyink.renderer.render_node import render_to_string as _render
 

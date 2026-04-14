@@ -31,6 +31,16 @@ def _tokenize_styled(text: str) -> list[tuple[str, str]]:
     E.g. "\\x1b[31mAB\\x1b[0m" -> [("\\x1b[31m", "A"), ("\\x1b[31m", "B")]
 
     This matches Ink's styledCharsFromTokens(tokenize(line)).
+
+    Parameters
+    ----------
+    text : str
+        A string potentially containing ANSI escape sequences.
+
+    Returns
+    -------
+    list[tuple[str, str]]
+        Each tuple is ``(accumulated_style_prefix, character)``.
     """
     result: list[tuple[str, str]] = []
     parts = _ANSI_RE.split(text)
@@ -65,7 +75,17 @@ def _string_width(text: str) -> int:
 
 
 class StyledChar:
-    """A single character with its ANSI style prefix."""
+    """A single character with its ANSI style prefix.
+
+    Parameters
+    ----------
+    value : str, optional
+        The visible character (default ``" "``).
+    styles : str, optional
+        Accumulated ANSI style prefix (default ``""``).
+    full_width : bool, optional
+        Whether this is a wide (CJK) character (default ``False``).
+    """
     __slots__ = ("value", "styles", "full_width")
 
     def __init__(self, value: str = " ", styles: str = "", full_width: bool = False):
@@ -84,6 +104,13 @@ class Output:
 
     Uses a StyledChar[][] grid. Each cell holds one character with its
     ANSI styles. Handles wide characters, clipping, and transformers.
+
+    Parameters
+    ----------
+    width : int
+        Buffer width in columns.
+    height : int
+        Buffer height in rows.
     """
 
     def __init__(self, width: int, height: int) -> None:
@@ -92,13 +119,35 @@ class Output:
         self._operations: list[tuple[str, Any]] = []
 
     def write(self, x: int, y: int, text: str) -> None:
-        """Write styled text at position (x, y)."""
+        """Write styled text at position (x, y).
+
+        Parameters
+        ----------
+        x : int
+            Column position.
+        y : int
+            Row position.
+        text : str
+            Styled text to write (may contain newlines).
+        """
         if not text:
             return
         self._operations.append(("write", (x, y, text)))
 
     def clip(self, x1: int, x2: int, y1: int, y2: int) -> None:
-        """Push a clipping region."""
+        """Push a clipping region.
+
+        Parameters
+        ----------
+        x1 : int
+            Left boundary (inclusive).
+        x2 : int
+            Right boundary (exclusive).
+        y1 : int
+            Top boundary (inclusive).
+        y2 : int
+            Bottom boundary (exclusive).
+        """
         self._operations.append(("clip", (x1, x2, y1, y2)))
 
     def unclip(self) -> None:
@@ -111,6 +160,11 @@ class Output:
         Matches Ink's Output.get() - initializes a StyledChar grid,
         processes all operations, handles clipping and wide characters,
         then converts to string.
+
+        Returns
+        -------
+        str
+            The rendered output as a plain string with embedded ANSI codes.
         """
         # Initialize grid with spaces (matching Ink's initialization)
         grid: list[list[StyledChar]] = []
@@ -239,7 +293,13 @@ class Output:
         return "\n".join(result_lines)
 
     def get_height(self) -> int:
-        """Return the number of output lines."""
+        """Return the number of output lines.
+
+        Returns
+        -------
+        int
+            Line count of the rendered output, or 0 if empty.
+        """
         output = self.get()
         if not output:
             return 0
@@ -247,7 +307,18 @@ class Output:
 
 
 def _styled_row_to_string(row: list[StyledChar]) -> str:
-    """Convert a row of StyledChars to a string, coalescing adjacent same-style runs."""
+    """Convert a row of StyledChars to a string, coalescing adjacent same-style runs.
+
+    Parameters
+    ----------
+    row : list[StyledChar]
+        A single row of styled character cells.
+
+    Returns
+    -------
+    str
+        The row rendered as a string with ANSI style sequences.
+    """
     if not row:
         return ""
 

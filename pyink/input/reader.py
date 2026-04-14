@@ -26,6 +26,11 @@ class InputManager:
     - Bracketed paste mode support
     - Input parser for CSI/SS3/paste sequence handling
     - Escape sequence timeout for standalone ESC key
+
+    Parameters
+    ----------
+    loop : asyncio.AbstractEventLoop
+        The event loop used for scheduling reads and timers.
     """
 
     def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -197,18 +202,46 @@ class InputManager:
                     pass
 
     def add_listener(self, fn: Callable[[str, Key], None]) -> None:
+        """Register a keypress listener.
+
+        Parameters
+        ----------
+        fn : Callable[[str, Key], None]
+            Callback receiving ``(input_string, key)`` for each keypress.
+        """
         self._listeners.append(fn)
 
     def remove_listener(self, fn: Callable[[str, Key], None]) -> None:
+        """Remove a previously registered keypress listener.
+
+        Parameters
+        ----------
+        fn : Callable[[str, Key], None]
+            The listener to remove.
+        """
         try:
             self._listeners.remove(fn)
         except ValueError:
             pass
 
     def add_paste_listener(self, fn: Callable[[str], None]) -> None:
+        """Register a paste event listener.
+
+        Parameters
+        ----------
+        fn : Callable[[str], None]
+            Callback receiving the pasted text.
+        """
         self._paste_listeners.append(fn)
 
     def remove_paste_listener(self, fn: Callable[[str], None]) -> None:
+        """Remove a previously registered paste listener.
+
+        Parameters
+        ----------
+        fn : Callable[[str], None]
+            The listener to remove.
+        """
         try:
             self._paste_listeners.remove(fn)
         except ValueError:

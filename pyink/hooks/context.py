@@ -20,6 +20,18 @@ _current_app: ContextVar[Any] = ContextVar("_current_app", default=None)
 
 
 def get_current_fiber() -> Fiber:
+    """Get the currently-rendering fiber from context.
+
+    Returns
+    -------
+    Fiber
+        The fiber that is currently being rendered.
+
+    Raises
+    ------
+    RuntimeError
+        If called outside of a component render.
+    """
     fiber = _current_fiber.get()
     if fiber is None:
         raise RuntimeError("Hook called outside of a component render")
@@ -27,6 +39,18 @@ def get_current_fiber() -> Fiber:
 
 
 def get_schedule_update() -> Callable:
+    """Get the reconciler's schedule_update callback from context.
+
+    Returns
+    -------
+    Callable
+        The schedule_update function provided by the reconciler.
+
+    Raises
+    ------
+    RuntimeError
+        If no reconciler is available.
+    """
     fn = _schedule_update.get()
     if fn is None:
         raise RuntimeError("No reconciler available")
@@ -34,6 +58,18 @@ def get_schedule_update() -> Callable:
 
 
 def get_current_app() -> Any:
+    """Get the current app context.
+
+    Returns
+    -------
+    Any
+        The current application instance.
+
+    Raises
+    ------
+    RuntimeError
+        If no app context is available.
+    """
     app = _current_app.get()
     if app is None:
         raise RuntimeError("No app context available")

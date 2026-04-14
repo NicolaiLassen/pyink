@@ -39,7 +39,20 @@ def _parse_csi_sequence(
 ) -> tuple[str, int] | str | None:
     """Parse a CSI (Control Sequence Introducer) sequence.
 
-    Returns (sequence, next_index), 'pending', or None.
+    Parameters
+    ----------
+    input_str : str
+        The raw input string to parse.
+    start_index : int
+        Index where the escape sequence begins.
+    prefix_length : int
+        Length of the escape prefix (1 for single ESC, 2 for double).
+
+    Returns
+    -------
+    tuple[str, int] | str | None
+        A ``(sequence, next_index)`` tuple on success, ``'pending'`` if
+        more data is needed, or ``None`` if the sequence is invalid.
     """
     csi_payload_start = start_index + prefix_length + 1
     index = csi_payload_start
@@ -67,7 +80,23 @@ def _parse_csi_sequence(
 def _parse_ss3_sequence(
     input_str: str, start_index: int, prefix_length: int
 ) -> tuple[str, int] | str | None:
-    """Parse an SS3 sequence. Returns (sequence, next_index), 'pending', or None."""
+    """Parse an SS3 sequence.
+
+    Parameters
+    ----------
+    input_str : str
+        The raw input string to parse.
+    start_index : int
+        Index where the escape sequence begins.
+    prefix_length : int
+        Length of the escape prefix.
+
+    Returns
+    -------
+    tuple[str, int] | str | None
+        A ``(sequence, next_index)`` tuple on success, ``'pending'`` if
+        more data is needed, or ``None`` if the sequence is invalid.
+    """
     next_index = start_index + prefix_length + 2
     if next_index > len(input_str):
         return "pending"
@@ -82,7 +111,23 @@ def _parse_ss3_sequence(
 def _parse_control_sequence(
     input_str: str, start_index: int, prefix_length: int
 ) -> tuple[str, int] | str | None:
-    """Parse a control sequence (CSI or SS3)."""
+    """Parse a control sequence (CSI or SS3).
+
+    Parameters
+    ----------
+    input_str : str
+        The raw input string to parse.
+    start_index : int
+        Index where the escape sequence begins.
+    prefix_length : int
+        Length of the escape prefix.
+
+    Returns
+    -------
+    tuple[str, int] | str | None
+        A ``(sequence, next_index)`` tuple on success, ``'pending'`` if
+        more data is needed, or ``None`` if the sequence is invalid.
+    """
     seq_type_idx = start_index + prefix_length
     if seq_type_idx >= len(input_str):
         return "pending"
@@ -101,7 +146,20 @@ def _parse_control_sequence(
 def _parse_escaped_code_point(
     input_str: str, escape_index: int
 ) -> tuple[str, int]:
-    """Parse an escaped codepoint (ESC + char)."""
+    """Parse an escaped codepoint (ESC + char).
+
+    Parameters
+    ----------
+    input_str : str
+        The raw input string to parse.
+    escape_index : int
+        Index of the escape character.
+
+    Returns
+    -------
+    tuple[str, int]
+        A ``(sequence, next_index)`` tuple.
+    """
     next_cp = ord(input_str[escape_index + 1]) if escape_index + 1 < len(input_str) else None
     next_cp_length = 2 if (next_cp is not None and next_cp > 0xFFFF) else 1
     next_index = escape_index + 1 + next_cp_length
@@ -112,7 +170,21 @@ def _parse_escaped_code_point(
 def _parse_escape_sequence(
     input_str: str, escape_index: int
 ) -> tuple[str, int] | str:
-    """Parse an escape sequence. Returns (sequence, next_index) or 'pending'."""
+    """Parse an escape sequence.
+
+    Parameters
+    ----------
+    input_str : str
+        The raw input string to parse.
+    escape_index : int
+        Index of the escape character.
+
+    Returns
+    -------
+    tuple[str, int] | str
+        A ``(sequence, next_index)`` tuple on success, or ``'pending'``
+        if more data is needed.
+    """
     if escape_index == len(input_str) - 1:
         return "pending"
 
@@ -147,6 +219,13 @@ def _split_backspace_bytes(text: str, events: list[InputEvent]) -> None:
     When a user holds backspace, the terminal sends repeated bytes in a
     single stdin chunk. Without splitting, parseKeypress receives the
     multi-byte string and fails to recognize it.
+
+    Parameters
+    ----------
+    text : str
+        The raw text segment to split.
+    events : list[InputEvent]
+        List to append resulting events to (mutated in place).
     """
     segment_start = 0
 
@@ -164,7 +243,18 @@ def _split_backspace_bytes(text: str, events: list[InputEvent]) -> None:
 def _parse_keypresses(input_str: str) -> tuple[list[InputEvent], str]:
     """Parse input into events and pending buffer.
 
-    Returns (events, pending).
+    Parameters
+    ----------
+    input_str : str
+        Raw input string, potentially containing multiple keypresses
+        and incomplete escape sequences.
+
+    Returns
+    -------
+    tuple[list[InputEvent], str]
+        A ``(events, pending)`` tuple where *events* is the list of
+        completed input events and *pending* is any trailing incomplete
+        data that needs more bytes.
     """
     events: list[InputEvent] = []
     index = 0
@@ -212,12 +302,30 @@ class InputParser:
         self._pending = ""
 
     def push(self, chunk: str) -> list[InputEvent]:
-        """Parse a chunk of input, returning completed events."""
+        """Parse a chunk of input, returning completed events.
+
+        Parameters
+        ----------
+        chunk : str
+            New raw input data to parse.
+
+        Returns
+        -------
+        list[InputEvent]
+            Completed input events extracted from the chunk.
+        """
         events, self._pending = _parse_keypresses(self._pending + chunk)
         return events
 
     def has_pending_escape(self) -> bool:
-        """Check if there's a pending escape sequence (not paste-related)."""
+        """Check if there's a pending escape sequence (not paste-related).
+
+        Returns
+        -------
+        bool
+            True if the pending buffer starts with an escape that is not
+            a bracketed-paste prefix.
+        """
         return (
             self._pending.startswith(ESCAPE)
             and not self._pending.startswith(PASTE_START)
@@ -225,7 +333,14 @@ class InputParser:
         )
 
     def flush_pending_escape(self) -> str | None:
-        """Flush and return pending escape sequence, if any."""
+        """Flush and return pending escape sequence, if any.
+
+        Returns
+        -------
+        str or None
+            The pending escape string, or ``None`` if there is no
+            pending escape.
+        """
         if not self._pending.startswith(ESCAPE):
             return None
         pending = self._pending
@@ -238,5 +353,11 @@ class InputParser:
 
 
 def create_input_parser() -> InputParser:
-    """Factory function matching Ink's createInputParser()."""
+    """Factory function matching Ink's createInputParser().
+
+    Returns
+    -------
+    InputParser
+        A new stateful input parser instance.
+    """
     return InputParser()

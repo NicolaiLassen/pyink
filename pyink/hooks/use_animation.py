@@ -26,6 +26,18 @@ def use_animation(
     """Frame-based animation hook, matching Ink's useAnimation.
 
     Returns frame count, elapsed time, delta, and a reset function.
+
+    Parameters
+    ----------
+    interval : int, optional
+        Tick interval in milliseconds. Clamped internally to valid range.
+    is_active : bool, optional
+        Whether the animation timer is running.
+
+    Returns
+    -------
+    AnimationResult
+        An object containing ``frame``, ``time``, ``delta``, and ``reset``.
     """
     frame, set_frame = use_state(0)
     elapsed_time, set_elapsed_time = use_state(0.0)

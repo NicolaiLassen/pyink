@@ -18,7 +18,14 @@ from pyink.vnode import VNode
 
 
 class Reconciler:
-    """Manages the fiber tree, diffing VNode trees, and scheduling renders."""
+    """Manages the fiber tree, diffing VNode trees, and scheduling renders.
+
+    Parameters
+    ----------
+    on_commit : Callable[[], None]
+        Callback invoked after each commit so the renderer can
+        repaint.
+    """
 
     def __init__(self, on_commit: Callable[[], None]) -> None:
         self.root_fiber: Fiber | None = None
@@ -30,13 +37,38 @@ class Reconciler:
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Assign the event loop used for scheduling batched updates.
+
+        Parameters
+        ----------
+        loop : asyncio.AbstractEventLoop
+            The running event loop.
+        """
         self._loop = loop
 
     def set_app(self, app: Any) -> None:
+        """Assign the application instance used as context for hooks.
+
+        Parameters
+        ----------
+        app : Any
+            The ``App`` instance.
+        """
         self._app = app
 
     def mount(self, root_vnode: VNode) -> Fiber:
-        """Initial mount of the application."""
+        """Initial mount of the application.
+
+        Parameters
+        ----------
+        root_vnode : VNode
+            The root virtual node to mount.
+
+        Returns
+        -------
+        Fiber
+            The root fiber of the mounted tree.
+        """
         self.root_fiber = self._create_fiber_from_vnode(root_vnode, parent=None)
         self._render_fiber(self.root_fiber)
         self._commit()
@@ -47,6 +79,11 @@ class Reconciler:
 
         Uses call_soon_threadsafe so background threads can trigger
         re-renders (e.g. streaming responses).
+
+        Parameters
+        ----------
+        fiber : Fiber
+            The fiber whose state has changed and needs re-rendering.
         """
         fid = id(fiber)
         self._dirty_fibers.add(fid)

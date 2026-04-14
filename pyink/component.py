@@ -13,6 +13,16 @@ def component(fn: Callable) -> Callable[..., VNode]:
     The decorated function, when called, does NOT execute the body.
     Instead it returns a VNode whose type is the original function.
     The reconciler calls the body later when processing the VNode.
+
+    Parameters
+    ----------
+    fn : Callable
+        The render function to wrap as a component.
+
+    Returns
+    -------
+    Callable[..., VNode]
+        A wrapper that produces a VNode when called with children and props.
     """
 
     @functools.wraps(fn)

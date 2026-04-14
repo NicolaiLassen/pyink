@@ -17,6 +17,14 @@ def use_input(
     """Subscribe to keyboard input.
 
     handler(input_str, key) is called for each keypress while active is True.
+
+    Parameters
+    ----------
+    handler : Callable[[str, Key], None]
+        Callback invoked with ``(input_str, key)`` on each keypress.
+    active : bool, optional
+        Whether the input listener is active. When ``False``, the handler
+        is not subscribed.
     """
     app = get_current_app()
     handler_ref = use_ref(handler)

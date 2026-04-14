@@ -20,6 +20,11 @@ def use_window_size() -> WindowSize:
     """Get terminal window dimensions. Re-renders on resize.
 
     Matches Ink's useWindowSize hook.
+
+    Returns
+    -------
+    WindowSize
+        The current terminal dimensions with ``columns`` and ``rows``.
     """
     cols, rows = get_terminal_size()
     columns, set_columns = use_state(cols)

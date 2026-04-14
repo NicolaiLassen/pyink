@@ -82,6 +82,22 @@ def render_border(
     """Render border matching Ink's renderBorder() exactly.
 
     Writes borders as multi-line strings like Ink does.
+
+    Parameters
+    ----------
+    x : int
+        Left coordinate of the border box.
+    y : int
+        Top coordinate of the border box.
+    node_style : dict[str, Any]
+        Style dictionary containing border configuration (``border_style``,
+        per-edge visibility, colors, dim flags, etc.).
+    yoga_width : int
+        Total width of the node (including border).
+    yoga_height : int
+        Total height of the node (including border).
+    output : Any
+        The ``Output`` buffer to write border characters into.
     """
     border_style = node_style.get("border_style")
     if not border_style or border_style == "none":

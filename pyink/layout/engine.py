@@ -12,7 +12,18 @@ _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 
 def visible_width(text: str) -> int:
-    """Calculate visible width of a string, ignoring ANSI escape codes."""
+    """Calculate visible width of a string, ignoring ANSI escape codes.
+
+    Parameters
+    ----------
+    text : str
+        Text that may contain ANSI escape sequences.
+
+    Returns
+    -------
+    int
+        The visible character width, accounting for wide (CJK) characters.
+    """
     clean = _ANSI_RE.sub("", text)
     # Handle wide characters (CJK etc.)
     try:
@@ -28,7 +39,20 @@ def visible_width(text: str) -> int:
 
 
 def _wrap_text(text: str, max_width: int) -> list[str]:
-    """Wrap text to max_width, respecting word boundaries where possible."""
+    """Wrap text to max_width, respecting word boundaries where possible.
+
+    Parameters
+    ----------
+    text : str
+        The text to wrap.
+    max_width : int
+        Maximum visible width per line.
+
+    Returns
+    -------
+    list[str]
+        The wrapped lines.
+    """
     if max_width <= 0:
         return [text]
 
@@ -65,6 +89,24 @@ def _measure_text(
     """Yoga measure function for text nodes.
 
     pyyoga calls this with (width, width_mode, height, height_mode) - no node arg.
+
+    Parameters
+    ----------
+    dom_element : DOMElement
+        The DOM element whose text content is being measured.
+    width : float
+        Available width provided by Yoga.
+    width_mode : int
+        Yoga MeasureMode for the width constraint.
+    height : float
+        Available height provided by Yoga.
+    height_mode : int
+        Yoga MeasureMode for the height constraint.
+
+    Returns
+    -------
+    tuple[float, float]
+        ``(measured_width, measured_height)`` of the text content.
     """
     text = squash_text_nodes(dom_element)
 
@@ -89,7 +131,13 @@ def _measure_text(
 
 
 def build_yoga_tree(element: DOMElement) -> None:
-    """Recursively create yoga nodes and attach them to DOMElements."""
+    """Recursively create yoga nodes and attach them to DOMElements.
+
+    Parameters
+    ----------
+    element : DOMElement
+        The root DOM element to start building from.
+    """
     if element.yoga_node is None:
         element.yoga_node = yoga.Node()
 
@@ -120,7 +168,17 @@ def build_yoga_tree(element: DOMElement) -> None:
 def compute_layout(
     root: DOMElement, terminal_width: int, terminal_height: int
 ) -> None:
-    """Build yoga tree and compute layout for the entire DOM tree."""
+    """Build yoga tree and compute layout for the entire DOM tree.
+
+    Parameters
+    ----------
+    root : DOMElement
+        The root DOM element.
+    terminal_width : int
+        Width of the terminal in columns.
+    terminal_height : int
+        Height of the terminal in rows.
+    """
     build_yoga_tree(root)
     if root.yoga_node:
         root.yoga_node.width = terminal_width

@@ -14,6 +14,14 @@ def use_paste(
 
     Automatically enables bracketed paste mode while active.
     Pasted text arrives as a single string.
+
+    Parameters
+    ----------
+    handler : Callable[[str], None]
+        Callback invoked with the pasted text string.
+    is_active : bool, optional
+        Whether paste listening is active. When ``False``, bracketed paste
+        mode is disabled and the handler is not subscribed.
     """
     handler_ref = use_ref(handler)
     handler_ref.current = handler

@@ -72,7 +72,18 @@ _HEX_RE = re.compile(r"^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$")
 
 
 def strip_ansi(text: str) -> str:
-    """Remove all ANSI escape codes from a string."""
+    """Remove all ANSI escape codes from a string.
+
+    Parameters
+    ----------
+    text : str
+        Text potentially containing ANSI escape sequences.
+
+    Returns
+    -------
+    str
+        The text with all ANSI escape sequences removed.
+    """
     return _ANSI_RE.sub("", text)
 
 
@@ -144,7 +155,48 @@ def style_text(
     text_wrap: str | None = None,
     **_extra: Any,
 ) -> str:
-    """Apply ANSI styles to text based on Ink-style props."""
+    """Apply ANSI styles to text based on Ink-style props.
+
+    Parameters
+    ----------
+    text : str
+        The text to style.
+    color : str or None, optional
+        Foreground color name, hex, ``rgb()``, or ANSI-256 number.
+    background_color : str or None, optional
+        Background color (same formats as *color*).
+    bg_color : str or None, optional
+        Alias for *background_color*.
+    background : str or None, optional
+        Alias for *background_color*.
+    bold : bool, optional
+        Enable bold.
+    dim : bool, optional
+        Enable dim / faint.
+    dim_color : bool, optional
+        Apply dim specifically to the foreground color.
+    italic : bool, optional
+        Enable italic.
+    underline : bool, optional
+        Enable underline.
+    strikethrough : bool, optional
+        Enable strikethrough.
+    inverse : bool, optional
+        Enable inverse / reverse video.
+    overline : bool, optional
+        Enable overline.
+    wrap : str or None, optional
+        Text wrap mode (unused here, consumed by layout).
+    text_wrap : str or None, optional
+        Alias for *wrap*.
+    **_extra : Any
+        Extra keyword arguments are silently ignored.
+
+    Returns
+    -------
+    str
+        The text wrapped in the appropriate ANSI escape sequences.
+    """
     if not text:
         return text
 
@@ -196,7 +248,20 @@ ALT_SCREEN_OFF = "\033[?1049l"
 
 
 def cursor_to(x: int, y: int) -> str:
-    """Move cursor to (x, y) position (1-indexed)."""
+    """Move cursor to (x, y) position (1-indexed).
+
+    Parameters
+    ----------
+    x : int
+        Zero-based column.
+    y : int
+        Zero-based row.
+
+    Returns
+    -------
+    str
+        The ANSI escape sequence for the cursor movement.
+    """
     return f"\033[{y + 1};{x + 1}H"
 
 
@@ -209,7 +274,18 @@ def cursor_down(n: int = 1) -> str:
 
 
 def erase_lines(count: int) -> str:
-    """Erase `count` lines from current position upward."""
+    """Erase `count` lines from current position upward.
+
+    Parameters
+    ----------
+    count : int
+        Number of lines to erase.
+
+    Returns
+    -------
+    str
+        The combined ANSI escape sequence.
+    """
     result = ""
     for i in range(count):
         result += ERASE_LINE

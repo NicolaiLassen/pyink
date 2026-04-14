@@ -28,11 +28,25 @@ class RenderResult:
 
 
 def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
-    """1:1 port of Ink's renderer.ts renderer() function.
+    """Render the DOM tree, separating static and dynamic output.
 
-    Source: /tmp/ink-reference/src/renderer.ts lines 13-77
-    Creates Output with yoga computed dimensions, renders node tree,
-    returns {output, outputHeight, staticOutput}.
+    Static nodes (marked with ``_static``) are rendered into a
+    separate ``static_output`` string that the app writes once to
+    stdout. Dynamic content is rendered into ``output`` which
+    log-update redraws in place.
+
+    Parameters
+    ----------
+    dom : DOMElement or None
+        Root DOM element.
+    width : int, optional
+        Terminal width override.
+
+    Returns
+    -------
+    RenderResult
+        Contains ``output`` (dynamic), ``output_height``, and
+        ``static_output`` (new static items to write once).
     """
     if dom is None or dom.yoga_node is None:
         return RenderResult("", 0)
@@ -43,26 +57,30 @@ def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
         except Exception:
             width = 80
 
-    # Compute layout (sets yoga width and calculates)
     compute_layout(dom, width, 500)
 
     yn = dom.yoga_node
-
-    # Lines 37-42: create Output with yoga computed dimensions
     output_width = int(yn.get_computed_width())
     output_height = int(yn.get_computed_height())
 
-    output_buf = Output(output_width, output_height)
+    # Pass 1: render only static nodes.
+    static_buf = Output(output_width, output_height)
+    _render_node(dom, static_buf, 0, 0, transformers=[], skip_static=False, only_static=True)
+    static_output = static_buf.get()
 
-    # Line 42-44: render node tree to output
-    _render_node(dom, output_buf, 0, 0, transformers=[], skip_static=True)
+    # Pass 2: render only dynamic nodes (skip static).
+    dynamic_buf = Output(output_width, output_height)
+    _render_node(dom, dynamic_buf, 0, 0, transformers=[], skip_static=True)
+    dynamic_output = dynamic_buf.get()
 
-    # Line 59: get generated output
-    generated_output = output_buf.get()
+    # Dynamic output height = lines in dynamic output.
+    dynamic_lines = dynamic_output.split("\n")
+    dynamic_height = len(dynamic_lines)
 
     return RenderResult(
-        output=generated_output,
-        output_height=output_height,
+        output=dynamic_output,
+        output_height=dynamic_height,
+        static_output=static_output,
     )
 
 
@@ -79,10 +97,16 @@ def _render_node(
     *,
     transformers: list[Callable] | None = None,
     skip_static: bool = True,
+    only_static: bool = False,
 ) -> None:
     """Recursively render a DOM node to the output buffer.
 
-    Matches Ink's renderNodeToOutput() exactly.
+    Parameters
+    ----------
+    skip_static : bool
+        Skip nodes marked ``_static`` (render dynamic only).
+    only_static : bool
+        Only render nodes inside ``_static`` subtrees.
     """
     if isinstance(node, TextNode):
         return
@@ -91,12 +115,26 @@ def _render_node(
     if yn is None:
         return
 
-    # Check display none (matching Ink: yogaNode.getDisplay() === Yoga.DISPLAY_NONE)
     display = node.style.get("display")
     if display == "none":
         return
 
-    if skip_static and node.style.get("_static"):
+    is_static = node.style.get("_static")
+
+    if skip_static and is_static:
+        return
+
+    if only_static and not is_static:
+        # Not a static node — check if any children are static.
+        # Only recurse into containers that might hold static children.
+        if node.node_name in ("ink-root", "ink-box"):
+            for child in node.children:
+                _render_node(
+                    child, output, offset_x, offset_y,
+                    transformers=transformers,
+                    skip_static=False,
+                    only_static=True,
+                )
         return
 
     # Left and top positions are relative to parent (matching Ink)
@@ -171,6 +209,7 @@ def _render_node(
                 child, output, x, y,
                 transformers=new_transformers,
                 skip_static=skip_static,
+                only_static=only_static,
             )
 
         if clipped:

@@ -49,6 +49,18 @@ def parse_keypress(data: bytes) -> tuple[str, Key]:
     """Parse raw terminal input bytes into (input_string, Key).
 
     Handles ANSI escape sequences for special keys.
+
+    Parameters
+    ----------
+    data : bytes
+        Raw bytes read from the terminal.
+
+    Returns
+    -------
+    tuple[str, Key]
+        A ``(input_string, key)`` tuple where *input_string* is the
+        printable character (if any) and *key* carries modifier and
+        special-key flags.
     """
     key = Key()
 

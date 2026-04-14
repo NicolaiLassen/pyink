@@ -38,7 +38,15 @@ NON_YOGA_PROPS = {
 
 
 def apply_styles(node: Any, style: dict[str, Any]) -> None:
-    """Apply all style props to a yoga Node, matching Ink's styles() function."""
+    """Apply all style props to a yoga Node, matching Ink's styles() function.
+
+    Parameters
+    ----------
+    node : Any
+        The pyyoga Node to apply styles to.
+    style : dict[str, Any]
+        Dictionary of style properties (Ink-compatible).
+    """
     if node is None:
         return
     _apply_position_styles(node, style)

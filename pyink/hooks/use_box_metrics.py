@@ -23,6 +23,18 @@ def use_box_metrics(ref: Ref) -> BoxMetrics:
     """Measure a Box component's dimensions and position.
 
     Matches Ink's useBoxMetrics hook.
+
+    Parameters
+    ----------
+    ref : Ref
+        A ref attached to the Box component to measure. Its ``.current``
+        attribute should point to the rendered node.
+
+    Returns
+    -------
+    BoxMetrics
+        The measured dimensions, position, and whether measurement has
+        occurred.
     """
     width, set_width = use_state(0)
     height, set_height = use_state(0)

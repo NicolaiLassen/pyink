@@ -30,6 +30,18 @@ def Box(*children: VNode | str, **props: Any) -> VNode:
 
     Supports all flexbox props: flex_direction, justify_content, align_items,
     padding, margin, width, height, border_style, overflow, etc.
+
+    Parameters
+    ----------
+    *children : VNode | str
+        Child elements or text content.
+    **props : Any
+        Flexbox style and layout properties.
+
+    Returns
+    -------
+    VNode
+        A virtual node representing the box element.
     """
     return _make_element("ink-box", *children, **props)
 
@@ -39,18 +51,52 @@ def Text(*children: VNode | str, **props: Any) -> VNode:
 
     Supports: color, background_color, bold, dim, dim_color, italic,
     underline, strikethrough, inverse, overline, text_wrap.
+
+    Parameters
+    ----------
+    *children : VNode | str
+        Child elements or text content.
+    **props : Any
+        Text style properties.
+
+    Returns
+    -------
+    VNode
+        A virtual node representing the text element.
     """
     return _make_element("ink-text", *children, **props)
 
 
 def Spacer(**props: Any) -> VNode:
-    """Flexible space that expands along the major axis. Matches Ink's <Spacer>."""
+    """Flexible space that expands along the major axis. Matches Ink's <Spacer>.
+
+    Parameters
+    ----------
+    **props : Any
+        Additional layout properties.
+
+    Returns
+    -------
+    VNode
+        A virtual node representing the spacer element.
+    """
     props.setdefault("flex_grow", 1)
     return _make_element("ink-box", **props)
 
 
 def Newline(count: int = 1) -> VNode:
-    """Adds newline character(s). Matches Ink's <Newline>."""
+    """Adds newline character(s). Matches Ink's <Newline>.
+
+    Parameters
+    ----------
+    count : int, optional
+        Number of newlines to insert.
+
+    Returns
+    -------
+    VNode
+        A virtual node containing the newline text.
+    """
     return _make_element("ink-text", "\n" * count)
 
 
@@ -63,6 +109,23 @@ def Static(
     """Render permanent output that doesn't re-render. Matches Ink's <Static>.
 
     Can use items + render_item pattern (like Ink) or direct children.
+
+    Parameters
+    ----------
+    *children : VNode | str
+        Direct child elements or text content.
+    items : list or None, optional
+        List of data items to render.
+    render_item : Callable or None, optional
+        Function called as ``render_item(item, index)`` to produce a VNode
+        for each item.
+    **props : Any
+        Additional properties.
+
+    Returns
+    -------
+    VNode
+        A virtual node representing the static container.
     """
     props["_static"] = True
     if items is not None and render_item is not None:
@@ -80,6 +143,20 @@ def Transform(
 
     The transform function receives (line: str, index: int) and returns
     the transformed string, applied per-line.
+
+    Parameters
+    ----------
+    *children : VNode | str
+        Child elements or text content.
+    transform : Callable[[str, int], str] or None, optional
+        Per-line transformation function.
+    **props : Any
+        Additional properties.
+
+    Returns
+    -------
+    VNode
+        A virtual node representing the transform container.
     """
     props["_transform"] = transform
     return _make_element("ink-box", *children, **props)

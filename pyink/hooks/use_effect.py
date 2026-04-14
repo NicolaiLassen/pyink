@@ -15,6 +15,14 @@ def use_effect(
     setup() is called after render. If it returns a function, that function
     is called for cleanup before the next run or on unmount.
     deps=None means run every render. deps=() means run once on mount.
+
+    Parameters
+    ----------
+    setup : Callable[[], Callable | None]
+        The effect function to run after render. May return a cleanup function.
+    deps : tuple or None, optional
+        Dependency tuple controlling when the effect re-runs. ``None`` means
+        run every render, ``()`` means run once on mount.
     """
     fiber = get_current_fiber()
     idx = fiber.effect_index
@@ -32,7 +40,13 @@ def use_effect(
 
 
 def run_effects(fiber: Any) -> None:
-    """Execute pending effects for a fiber. Called by reconciler after commit."""
+    """Execute pending effects for a fiber. Called by reconciler after commit.
+
+    Parameters
+    ----------
+    fiber : Any
+        The fiber whose effects should be executed.
+    """
     for record in fiber.effects:
         should_run = (
             record.prev_deps is None  # first run
@@ -47,7 +61,13 @@ def run_effects(fiber: Any) -> None:
 
 
 def cleanup_effects(fiber: Any) -> None:
-    """Run all effect cleanups for a fiber (on unmount)."""
+    """Run all effect cleanups for a fiber (on unmount).
+
+    Parameters
+    ----------
+    fiber : Any
+        The fiber whose effect cleanups should be run.
+    """
     for record in fiber.effects:
         if record.cleanup and callable(record.cleanup):
             record.cleanup()

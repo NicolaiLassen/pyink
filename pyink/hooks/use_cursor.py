@@ -19,6 +19,12 @@ def use_cursor() -> dict[str, Callable]:
 
     Returns dict with set_cursor_position(pos) where pos is CursorPosition or None.
     Pass None to hide cursor.
+
+    Returns
+    -------
+    dict[str, Callable]
+        A dict containing a ``set_cursor_position`` callable that accepts
+        a ``CursorPosition`` or ``None``.
     """
     app = get_current_app()
 

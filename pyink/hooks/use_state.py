@@ -13,6 +13,17 @@ def use_state(initial: T) -> tuple[T, Callable[[T | Callable[[T], T]], None]]:
 
     Returns (current_value, set_state). set_state accepts either a new value
     or a function that receives the previous value and returns the new value.
+
+    Parameters
+    ----------
+    initial : T
+        The initial state value, used on the first render only.
+
+    Returns
+    -------
+    tuple[T, Callable[[T | Callable[[T], T]], None]]
+        A tuple of (current_value, set_state). set_state triggers a re-render
+        when the new value differs from the current value.
     """
     fiber = get_current_fiber()
     idx = fiber.hook_index

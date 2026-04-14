@@ -4,7 +4,14 @@ from collections.abc import Callable
 
 
 class FocusManager:
-    """Manages Tab-based focus navigation between components."""
+    """Manages Tab-based focus navigation between components.
+
+    Parameters
+    ----------
+    None
+        The constructor takes no arguments. Internal state is initialised
+        to an empty item list with no active focus.
+    """
 
     def __init__(self) -> None:
         self._items: list[FocusItem] = []
@@ -19,6 +26,20 @@ class FocusManager:
         auto_focus: bool = False,
         is_active: bool = True,
     ) -> None:
+        """Register a focusable component with the manager.
+
+        Parameters
+        ----------
+        focus_id : str
+            Unique identifier for the focusable item.
+        set_is_focused : Callable[[bool], None]
+            Callback invoked with ``True``/``False`` when focus changes.
+        auto_focus : bool, optional
+            If ``True`` and nothing is focused yet, focus this item
+            immediately.
+        is_active : bool, optional
+            Whether the item participates in focus navigation.
+        """
         item = FocusItem(
             id=focus_id,
             set_is_focused=set_is_focused,
@@ -30,6 +51,16 @@ class FocusManager:
             self.focus(focus_id)
 
     def unregister(self, focus_id: str) -> None:
+        """Remove a focusable component from the manager.
+
+        If the removed item was focused, focus moves to the next
+        available active item.
+
+        Parameters
+        ----------
+        focus_id : str
+            Identifier of the item to remove.
+        """
         self._items = [i for i in self._items if i.id != focus_id]
         if self._focused_id == focus_id:
             self._focused_id = None
@@ -39,6 +70,13 @@ class FocusManager:
                 self.focus(active[0].id)
 
     def focus(self, focus_id: str) -> None:
+        """Set focus to the item with the given id.
+
+        Parameters
+        ----------
+        focus_id : str
+            Identifier of the item to focus.
+        """
         if not self.enabled:
             return
 
@@ -57,6 +95,7 @@ class FocusManager:
                 break
 
     def focus_next(self) -> None:
+        """Move focus to the next active item in the list, wrapping around."""
         if not self.enabled:
             return
 
@@ -77,6 +116,7 @@ class FocusManager:
             self.focus(ids[0])
 
     def focus_previous(self) -> None:
+        """Move focus to the previous active item in the list, wrapping around."""
         if not self.enabled:
             return
 
@@ -105,6 +145,18 @@ class FocusManager:
 
 
 class FocusItem:
+    """Represents a single focusable item tracked by the FocusManager.
+
+    Parameters
+    ----------
+    id : str
+        Unique identifier for the focusable item.
+    set_is_focused : Callable[[bool], None]
+        Callback invoked when the item gains or loses focus.
+    is_active : bool, optional
+        Whether the item participates in focus navigation.
+    """
+
     def __init__(
         self,
         id: str,

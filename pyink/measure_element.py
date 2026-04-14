@@ -15,6 +15,16 @@ def measure_element(node: DOMElement) -> dict[str, int]:
     Call from use_effect or input handlers, not during render.
 
     Matches Ink's measureElement() function.
+
+    Parameters
+    ----------
+    node : DOMElement
+        The DOM element to measure.
+
+    Returns
+    -------
+    dict[str, int]
+        Dictionary with ``"width"`` and ``"height"`` keys.
     """
     yn = node.yoga_node
     if yn is None:
