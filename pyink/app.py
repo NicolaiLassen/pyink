@@ -205,8 +205,9 @@ class App:
             emit_layout_listeners(dom)
 
             # Static output needs immediate render (Ink lines 170–177)
-            # DON'T clear the dirty flag here — _on_render reads and clears it.
+            # Clear dirty flag BEFORE render, matching Ink's resetAfterCommit line 171
             if dom.is_static_dirty:
+                dom.is_static_dirty = False
                 self._on_render()
                 return
 
@@ -285,11 +286,13 @@ class App:
             self._last_output_height = result.output_height
             return
 
-        # Only pass NEW static output (when dirty flag is set)
-        static_output = ""
-        if dom.is_static_dirty and result.static_output:
-            static_output = result.static_output
-            dom.is_static_dirty = False
+        # Pass static output to the frame renderer.
+        # The dirty flag was already cleared in _on_commit (matching Ink).
+        # Only non-empty static output triggers the static write path.
+        has_static = result.static_output and result.static_output != "\n"
+        static_output = result.static_output if has_static else ""
+
+        if has_static:
             self._full_static_output += static_output
 
         self._render_interactive_frame(

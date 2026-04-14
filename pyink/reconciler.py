@@ -107,6 +107,7 @@ class Reconciler:
         self._app: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._root_node: DOMElement | None = None
+        self._last_static_child_count: int = 0
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         """Assign the event loop used for scheduling batched updates.
@@ -352,19 +353,21 @@ class Reconciler:
     def _wire_static_node(self, root_dom: DOMElement) -> None:
         """Find internal_static child and assign it to root_dom.static_node.
 
-        Port of Ink's reconciler pattern for <Static> node tracking.
-        Uses ``internal_static`` field instead of style prop.
+        Since pyink rebuilds the DOM from scratch every commit (unlike Ink
+        which mutates in place), we track static child count in the
+        reconciler to detect when NEW items are added.
         """
         for child in root_dom.children:
             if isinstance(child, DOMElement) and child.internal_static:
-                old = root_dom.static_node
                 root_dom.static_node = child
-                # Mark dirty when node is new or has different child count
-                if old is None or len(child.children) != len(
-                    getattr(old, "children", [])
-                ):
+                current_count = len(child.children)
+                # Only mark dirty when NEW children were added
+                if current_count > self._last_static_child_count:
                     root_dom.is_static_dirty = True
+                self._last_static_child_count = current_count
                 return
+        # No static node found — reset tracking
+        self._last_static_child_count = 0
 
     def _build_dom(
         self, fiber: Fiber, is_inside_text: bool = False
