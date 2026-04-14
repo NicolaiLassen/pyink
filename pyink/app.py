@@ -205,8 +205,8 @@ class App:
             emit_layout_listeners(dom)
 
             # Static output needs immediate render (Ink lines 170–177)
+            # DON'T clear the dirty flag here — _on_render reads and clears it.
             if dom.is_static_dirty:
-                dom.is_static_dirty = False
                 self._on_render()
                 return
 
@@ -1124,7 +1124,6 @@ def render_to_string_sync(
         The rendered output as a plain string with ANSI codes.
     """
     from pyink.reconciler import Reconciler
-    from pyink.renderer.render_node import render_to_string as _render
 
     def on_commit():
         pass
@@ -1177,9 +1176,24 @@ def render_to_string_sync(
     dom = root_fiber.dom_node if root_fiber else None
 
     if isinstance(dom, DOMElement):
-        output = _render(dom, width=columns)
+        # Port of Ink's renderToString (render-to-string.ts lines 59-142):
+        # Capture static output and prepend it to dynamic output.
+        from pyink.renderer.render_node import renderer as _renderer
+
+        result = _renderer(dom, width=columns)
+
+        static_output = result.static_output or ""
+        # Strip trailing newline from static output (Ink lines 134-136)
+        if static_output.endswith("\n"):
+            static_output = static_output[:-1]
+
+        output = result.output
+
         reconciler.unmount()
-        return output
+
+        if static_output and output:
+            return static_output + "\n" + output
+        return static_output or output
 
     reconciler.unmount()
     return ""
