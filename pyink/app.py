@@ -27,7 +27,6 @@ from pyink.terminal import (
     BSU,
     CLEAR_TERMINAL,
     ESU,
-    LogUpdate,
     get_terminal_size,
     should_synchronize,
 )
@@ -97,18 +96,34 @@ class App:
         use_alt_screen: bool = False,
         max_fps: int = 30,
         is_screen_reader_enabled: bool | None = None,
+        debug: bool = False,
+        interactive: bool | None = None,
+        on_render: Callable | None = None,
+        incremental_rendering: bool = False,
+        patch_console: bool = False,
     ) -> None:
         self._root_vnode = root_vnode
         self.stdout = stdout or sys.stdout
         self.stderr = stderr or sys.stderr
         self.stdin = stdin or sys.stdin
         self._exit_on_ctrl_c = exit_on_ctrl_c
+        self._debug = debug
+        self._on_render_callback = on_render
+        self._patch_console = patch_console
 
         self._is_screen_reader_enabled = (
             is_screen_reader_enabled
             if is_screen_reader_enabled is not None
             else os.environ.get("INK_SCREEN_READER", "").lower() == "true"
         )
+
+        # Port of ink.tsx lines 330-334: interactive mode detection
+        if interactive is not None:
+            self._interactive = interactive
+        else:
+            ci = os.environ.get("CI", "").lower() in ("true", "1", "yes")
+            is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
+            self._interactive = not ci and is_tty
 
         # Port of ink.tsx constructor state (lines 390-401)
         self._is_unmounted = False
@@ -124,7 +139,9 @@ class App:
         self._exit_code: int = 0
 
         # Port of ink.tsx line 363: this.log = logUpdate.create(options.stdout)
-        self._log = LogUpdate(self.stdout)
+        from pyink.terminal import create_log_update
+
+        self._log = create_log_update(self.stdout, incremental=incremental_rendering)
 
         self.input_manager: InputManager | None = None
         self.focus_manager = FocusManager()
@@ -135,6 +152,13 @@ class App:
         # Timer support for animations
         self._timers: dict[int, asyncio.TimerHandle] = {}
         self._timer_counter = 0
+
+        # Shared animation scheduler (port of App.tsx lines 80-191)
+        self._animation_subscribers: dict[
+            int, dict
+        ] = {}  # id -> {callback, interval, start_time, next_due_time}
+        self._animation_timer: asyncio.TimerHandle | None = None
+        self._animation_counter = 0
 
         # Cursor
         self._cursor_position: CursorPosition | None = None
@@ -205,6 +229,10 @@ class App:
         if not isinstance(dom, DOMElement):
             return
 
+        import time
+
+        start_time = time.monotonic()
+
         width = get_terminal_size()[0]
         result = renderer(
             dom,
@@ -212,15 +240,46 @@ class App:
             is_screen_reader_enabled=self._is_screen_reader_enabled,
         )
 
+        # on_render callback with metrics (ink.tsx line 538)
+        if self._on_render_callback:
+            render_time = (time.monotonic() - start_time) * 1000
+            try:
+                self._on_render_callback({"render_time": render_time})
+            except Exception:
+                pass
+
+        has_static = result.static_output and result.static_output != "\n"
+
+        # Debug mode: write each update as separate output (ink.tsx lines 543-553)
+        if self._debug:
+            if has_static:
+                self._full_static_output += result.static_output
+            self._last_output = result.output
+            self._last_output_to_render = result.output
+            self._last_output_height = result.output_height
+            self._stdout_write(self._full_static_output + result.output)
+            return
+
+        # Non-interactive mode (ink.tsx lines 555-564)
+        if not self._interactive:
+            if has_static:
+                self._stdout_write(result.static_output)
+            self._last_output = result.output
+            self._last_output_to_render = result.output + "\n"
+            self._last_output_height = result.output_height
+            return
+
         # Only pass static output when the static node is dirty
-        # (new items added). Reset the flag after reading.
         static_output = ""
         if dom.is_static_dirty and result.static_output:
             static_output = result.static_output
             dom.is_static_dirty = False
 
+        if has_static:
+            self._full_static_output += static_output
+
         self._render_interactive_frame(
-            result.output, result.output_height, static_output,
+            result.output, result.output_height, static_output if has_static else "",
         )
 
     # ── Port of ink.tsx renderInteractiveFrame (lines 1030-1095) ──
@@ -306,6 +365,13 @@ class App:
             self._last_output_to_render = ""
 
         self._last_terminal_width = current_width
+
+        # Notify registered resize handlers (used by useWindowSize, useBoxMetrics)
+        for handler in getattr(self, "_resize_handlers", []):
+            try:
+                handler()
+            except Exception:
+                pass
 
         # Line 468-469: recalculate layout and re-render
         self._on_render()
@@ -416,6 +482,97 @@ class App:
         if handle:
             handle.cancel()
 
+    # ── Shared animation scheduler (port of App.tsx lines 120-191) ──
+
+    def subscribe_animation(
+        self, callback: Callable[[float], None], interval: int
+    ) -> tuple[float, Callable[[], None]]:
+        """Register an animation subscriber with the shared scheduler.
+
+        Port of Ink's App.tsx animationSubscribe (lines 160–191).
+
+        Parameters
+        ----------
+        callback : Callable[[float], None]
+            Called with current_time (ms) on each tick.
+        interval : int
+            Tick interval in milliseconds.
+
+        Returns
+        -------
+        tuple[float, Callable[[], None]]
+            ``(start_time, unsubscribe)`` — start_time in ms, unsubscribe fn.
+        """
+        import time
+
+        sub_id = self._animation_counter
+        self._animation_counter += 1
+        start_time = time.monotonic() * 1000
+
+        self._animation_subscribers[sub_id] = {
+            "callback": callback,
+            "interval": interval,
+            "start_time": start_time,
+            "next_due_time": start_time + interval,
+        }
+        self._schedule_animation_tick()
+
+        def unsubscribe() -> None:
+            self._animation_subscribers.pop(sub_id, None)
+            if not self._animation_subscribers:
+                if self._animation_timer:
+                    self._animation_timer.cancel()
+                    self._animation_timer = None
+            else:
+                self._schedule_animation_tick()
+
+        return (start_time, unsubscribe)
+
+    def _schedule_animation_tick(self) -> None:
+        """Schedule the next shared animation tick at the earliest deadline."""
+        if self._animation_timer:
+            self._animation_timer.cancel()
+            self._animation_timer = None
+
+        if not self._animation_subscribers or not self._loop:
+            return
+
+        import time
+
+        now = time.monotonic() * 1000
+        next_due = min(
+            sub["next_due_time"] for sub in self._animation_subscribers.values()
+        )
+        delay = max(0, (next_due - now) / 1000.0)
+
+        self._animation_timer = self._loop.call_later(
+            delay, self._animation_tick
+        )
+
+    def _animation_tick(self) -> None:
+        """Fire all due animation subscribers and reschedule."""
+        import time
+
+        self._animation_timer = None
+        current_time = time.monotonic() * 1000
+
+        for sub in list(self._animation_subscribers.values()):
+            if current_time < sub["next_due_time"]:
+                continue
+
+            try:
+                sub["callback"](current_time)
+            except Exception:
+                pass
+
+            # Advance next_due_time based on elapsed frames
+            elapsed = current_time - sub["start_time"]
+            elapsed_frames = int(elapsed / sub["interval"]) + 1
+            sub["next_due_time"] = sub["start_time"] + elapsed_frames * sub["interval"]
+
+        if self._animation_subscribers:
+            self._schedule_animation_tick()
+
     # ── Port of ink.tsx run cycle ──
 
     async def run(self) -> int:
@@ -469,6 +626,12 @@ class App:
         for handle in self._timers.values():
             handle.cancel()
         self._timers.clear()
+
+        # Cancel shared animation scheduler
+        if self._animation_timer:
+            self._animation_timer.cancel()
+            self._animation_timer = None
+        self._animation_subscribers.clear()
 
         if self.input_manager:
             self.input_manager.stop()
@@ -558,6 +721,24 @@ class App:
 
         if sync:
             self._stdout_write(ESU)
+
+    async def wait_until_render_flush(self) -> None:
+        """Wait until pending render output is flushed to stdout.
+
+        Port of Ink's waitUntilRenderFlush (ink.tsx lines 880–926).
+        Flushes any pending throttled render, then awaits stdout drain.
+        """
+        if self._is_unmounted or self._is_unmounting:
+            return
+
+        # Flush pending throttled render
+        if self._render_pending and self._render_handle:
+            self._render_handle.cancel()
+            self._on_render()
+
+        # Yield to let any scheduled callbacks fire
+        if self._loop:
+            await asyncio.sleep(0)
 
     def rerender(self, vnode: VNode) -> None:
         """Re-render the application with a new root VNode.
@@ -681,6 +862,11 @@ def render(
     use_alt_screen: bool = False,
     max_fps: int = 30,
     is_screen_reader_enabled: bool | None = None,
+    debug: bool = False,
+    interactive: bool | None = None,
+    on_render: Callable | None = None,
+    incremental_rendering: bool = False,
+    patch_console: bool = False,
 ) -> Instance | None:
     """Port of Ink's render() from render.ts.
 
@@ -702,6 +888,16 @@ def render(
         Maximum render frames per second (default ``30``).
     is_screen_reader_enabled : bool or None, optional
         Force screen-reader mode on/off or auto-detect.
+    debug : bool, optional
+        Write each update as separate output without erasing (default ``False``).
+    interactive : bool or None, optional
+        Override interactive mode detection. ``None`` auto-detects.
+    on_render : Callable or None, optional
+        Callback after each render with ``{"render_time": float}`` metrics.
+    incremental_rendering : bool, optional
+        Only update changed lines (default ``False``).
+    patch_console : bool, optional
+        Patch ``builtins.print`` to route through Ink output (default ``False``).
 
     Returns
     -------
@@ -718,6 +914,11 @@ def render(
         use_alt_screen=use_alt_screen,
         max_fps=max_fps,
         is_screen_reader_enabled=is_screen_reader_enabled,
+        debug=debug,
+        interactive=interactive,
+        on_render=on_render,
+        incremental_rendering=incremental_rendering,
+        patch_console=patch_console,
     )
 
     try:

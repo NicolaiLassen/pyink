@@ -1,3 +1,7 @@
+"""useFocus / useFocusManager hooks — tab-based focus navigation.
+
+Port of Ink's ``src/hooks/use-focus.ts`` and ``src/hooks/use-focus-manager.ts``.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,6 +24,9 @@ def use_focus(
 ) -> FocusHandle:
     """Make a component focusable via Tab navigation.
 
+    Port of Ink's useFocus (use-focus.ts lines 38–85).
+    Enables raw mode when the component is active so Tab key is captured.
+
     Parameters
     ----------
     auto_focus : bool, optional
@@ -37,19 +44,37 @@ def use_focus(
     """
     app = get_current_app()
     import random
+
     focus_id_ref = use_ref(id or str(random.random())[2:7])
     is_focused, set_is_focused = use_state(False)
 
-    def effect():
+    # Effect 1: register/unregister with focus manager
+    def register_effect():
         fid = focus_id_ref.current
-        app.focus_manager.register(fid, set_is_focused, auto_focus=auto_focus, is_active=is_active)
+        app.focus_manager.register(
+            fid, set_is_focused, auto_focus=auto_focus, is_active=is_active
+        )
 
         def cleanup():
             app.focus_manager.unregister(fid)
 
         return cleanup
 
-    use_effect(effect, (is_active, auto_focus))
+    use_effect(register_effect, (is_active, auto_focus))
+
+    # Effect 2: enable raw mode when active (use-focus.ts lines 67–77)
+    def raw_mode_effect():
+        if not is_active or not app.input_manager.is_raw_mode_supported:
+            return None
+
+        app.input_manager.enable_raw_mode()
+
+        def cleanup():
+            app.input_manager.disable_raw_mode()
+
+        return cleanup
+
+    use_effect(raw_mode_effect, (is_active,))
 
     def focus_self():
         app.focus_manager.focus(focus_id_ref.current)
@@ -59,13 +84,7 @@ def use_focus(
 
 @dataclass
 class FocusManagerHandle:
-    """Handle for programmatic focus control.
-
-    Parameters
-    ----------
-    _app : Any
-        The internal application instance (private).
-    """
+    """Handle for programmatic focus control."""
 
     _app: Any
 
@@ -78,13 +97,7 @@ class FocusManagerHandle:
         self._app.focus_manager.focus_previous()
 
     def focus(self, id: str) -> None:
-        """Focus a specific component by id.
-
-        Parameters
-        ----------
-        id : str
-            The focus identifier of the component to focus.
-        """
+        """Focus a specific component by id."""
         self._app.focus_manager.focus(id)
 
     def disable_focus(self) -> None:

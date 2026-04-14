@@ -1,6 +1,10 @@
+"""useAnimation hook — frame-based animation.
+
+Port of Ink's ``src/hooks/use-animation.ts``.
+Uses the shared animation scheduler from the App for efficiency.
+"""
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -23,14 +27,15 @@ class AnimationResult:
 def use_animation(
     *, interval: int = 100, is_active: bool = True
 ) -> AnimationResult:
-    """Frame-based animation hook, matching Ink's useAnimation.
+    """Frame-based animation hook using the shared App scheduler.
 
-    Returns frame count, elapsed time, delta, and a reset function.
+    Port of Ink's useAnimation (use-animation.ts lines 67–143).
+    All animations share a single timer in the App for efficiency.
 
     Parameters
     ----------
     interval : int, optional
-        Tick interval in milliseconds. Clamped internally to valid range.
+        Tick interval in milliseconds. Clamped to valid range.
     is_active : bool, optional
         Whether the animation timer is running.
 
@@ -49,37 +54,53 @@ def use_animation(
     app = get_current_app()
 
     def reset() -> None:
+        import time
+
+        now = time.monotonic() * 1000
         set_frame(0)
         set_elapsed_time(0.0)
         set_delta(0.0)
-        start_time_ref.current = time.monotonic() * 1000
-        last_time_ref.current = time.monotonic() * 1000
+        start_time_ref.current = now
+        last_time_ref.current = now
 
     def effect():
         if not is_active:
             return None
 
-        now = time.monotonic() * 1000
-        start_time_ref.current = now
-        last_time_ref.current = now
+        actual_interval = max(1, min(interval, 2_147_483_647))
 
-        def tick() -> None:
-            current = time.monotonic() * 1000
-            dt = current - last_time_ref.current
-            last_time_ref.current = current
-            total = current - start_time_ref.current
+        def tick(current_time: float) -> None:
+            dt = current_time - last_time_ref.current
+            last_time_ref.current = current_time
+            total = current_time - start_time_ref.current
 
             set_frame(lambda f: f + 1)
             set_elapsed_time(total)
             set_delta(dt)
 
-        actual_interval = max(1, min(interval, 2_147_483_647))
-        handle = app.add_timer(actual_interval / 1000.0, tick, repeating=True)
+        # Use shared animation scheduler if available (port of App.tsx subscribe)
+        if hasattr(app, "subscribe_animation"):
+            start_time, unsubscribe = app.subscribe_animation(
+                tick, actual_interval
+            )
+            start_time_ref.current = start_time
+            last_time_ref.current = start_time
+            return unsubscribe
 
-        def cleanup():
-            app.remove_timer(handle)
+        # Fallback: per-hook timer (for render_to_string_sync etc.)
+        import time
 
-        return cleanup
+        now = time.monotonic() * 1000
+        start_time_ref.current = now
+        last_time_ref.current = now
+
+        def simple_tick() -> None:
+            tick(time.monotonic() * 1000)
+
+        handle = app.add_timer(
+            actual_interval / 1000.0, simple_tick, repeating=True
+        )
+        return lambda: app.remove_timer(handle)
 
     use_effect(effect, (is_active, interval))
 

@@ -1,3 +1,7 @@
+"""useApp hook — control the application lifecycle.
+
+Port of Ink's ``src/hooks/use-app.ts``.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,13 +12,7 @@ from pyink.hooks.context import get_current_app
 
 @dataclass
 class AppHandle:
-    """Public handle returned by use_app() for controlling the application lifecycle.
-
-    Parameters
-    ----------
-    _app : Any
-        The internal application instance (private).
-    """
+    """Public handle returned by use_app() for controlling the application lifecycle."""
 
     _app: Any
 
@@ -30,14 +28,16 @@ class AppHandle:
 
     @property
     def exit_code(self) -> int:
-        """The current exit code of the application.
-
-        Returns
-        -------
-        int
-            The exit code.
-        """
+        """The current exit code of the application."""
         return self._app._exit_code
+
+    async def wait_until_render_flush(self) -> None:
+        """Wait until pending render output is flushed to stdout.
+
+        Port of Ink's AppContext.waitUntilRenderFlush.
+        """
+        if hasattr(self._app, "wait_until_render_flush"):
+            await self._app.wait_until_render_flush()
 
 
 def use_app() -> AppHandle:
@@ -46,7 +46,8 @@ def use_app() -> AppHandle:
     Returns
     -------
     AppHandle
-        A handle providing methods to control the app (e.g. exit).
+        A handle providing methods to control the app (e.g. exit,
+        wait_until_render_flush).
     """
     app = get_current_app()
     return AppHandle(_app=app)

@@ -1,3 +1,7 @@
+"""useInput hook — subscribe to keyboard input.
+
+Port of Ink's ``src/hooks/use-input.ts``.
+"""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -16,7 +20,8 @@ def use_input(
 ) -> None:
     """Subscribe to keyboard input.
 
-    handler(input_str, key) is called for each keypress while active is True.
+    Port of Ink's useInput (use-input.ts lines 159–269).
+    Enables raw mode while active so keyboard input is captured.
 
     Parameters
     ----------
@@ -24,7 +29,7 @@ def use_input(
         Callback invoked with ``(input_str, key)`` on each keypress.
     active : bool, optional
         Whether the input listener is active. When ``False``, the handler
-        is not subscribed.
+        is not subscribed and raw mode is not enabled.
     """
     app = get_current_app()
     handler_ref = use_ref(handler)
@@ -34,6 +39,9 @@ def use_input(
         if not active:
             return None
 
+        # Port of use-input.ts lines 169–173: enable raw mode in effect
+        app.input_manager.enable_raw_mode()
+
         def on_input(input_str: str, key: Key) -> None:
             handler_ref.current(input_str, key)
 
@@ -41,6 +49,7 @@ def use_input(
 
         def cleanup():
             app.input_manager.remove_listener(on_input)
+            app.input_manager.disable_raw_mode()
 
         return cleanup
 

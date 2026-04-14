@@ -417,6 +417,7 @@ class Reconciler:
         # Apply props — port of reconciler.ts createInstance lines 206–238
         props = fiber.props
         style_props: dict[str, Any] = {}
+        accessibility: dict[str, Any] = {}
 
         for key, value in props.items():
             if key == "children":
@@ -437,11 +438,21 @@ class Reconciler:
                 set_attribute(el, key, value)
                 continue
 
+            # ARIA props → internal_accessibility (Box.tsx/Text.tsx)
+            if key in ("aria_label", "aria_hidden", "aria_role", "aria_state"):
+                aria_key = key[5:]  # strip "aria_" prefix
+                accessibility[aria_key] = value
+                continue
+
             if key == "key":
                 continue
 
             # Everything else goes into style
             style_props[key] = value
+
+        # Apply collected ARIA props
+        if accessibility:
+            set_attribute(el, "internal_accessibility", accessibility)
 
         set_style(el, style_props)
         if el.yoga_node:

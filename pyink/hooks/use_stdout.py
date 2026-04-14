@@ -19,15 +19,21 @@ class StdoutHandle:
     _app: Any
 
     def write(self, data: str) -> None:
-        """Write data to stdout and flush.
+        """Write data to stdout while preserving Ink output.
+
+        Routes through ``app.write_to_stdout()`` which clears the
+        log-update frame, writes data, then restores it.
 
         Parameters
         ----------
         data : str
             The string to write to stdout.
         """
-        self._app.stdout.write(data)
-        self._app.stdout.flush()
+        if hasattr(self._app, "write_to_stdout"):
+            self._app.write_to_stdout(data)
+        else:
+            self._app.stdout.write(data)
+            self._app.stdout.flush()
 
     @property
     def columns(self) -> int:
@@ -67,16 +73,22 @@ class StderrHandle:
     _app: Any
 
     def write(self, data: str) -> None:
-        """Write data to stderr and flush.
+        """Write data to stderr while preserving Ink output.
+
+        Routes through ``app.write_to_stderr()`` which clears the
+        log-update frame, writes data, then restores it.
 
         Parameters
         ----------
         data : str
             The string to write to stderr.
         """
-        import sys
-        sys.stderr.write(data)
-        sys.stderr.flush()
+        if hasattr(self._app, "write_to_stderr"):
+            self._app.write_to_stderr(data)
+        else:
+            import sys
+            sys.stderr.write(data)
+            sys.stderr.flush()
 
 
 @dataclass
