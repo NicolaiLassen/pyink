@@ -285,17 +285,15 @@ class App:
             self._last_output_height = result.output_height
             return
 
-        # Only pass static output when the static node is dirty
+        # Only pass NEW static output (when dirty flag is set)
         static_output = ""
         if dom.is_static_dirty and result.static_output:
             static_output = result.static_output
             dom.is_static_dirty = False
-
-        if has_static:
             self._full_static_output += static_output
 
         self._render_interactive_frame(
-            result.output, result.output_height, static_output if has_static else "",
+            result.output, result.output_height, static_output,
         )
 
     # ── Port of ink.tsx renderInteractiveFrame (lines 1030-1095) ──

@@ -6,6 +6,7 @@ and ``src/write-synchronized.ts``.
 from __future__ import annotations
 
 import os
+import platform as _platform
 import shutil
 
 from pyink.cursor_helpers import (
@@ -42,7 +43,15 @@ SHOW_CURSOR = "\x1b[?25h"
 ERASE_LINE = "\x1b[2K"       # CSI 2 K — erase entire line
 CURSOR_UP = "\x1b[A"         # CSI A — cursor up 1
 CURSOR_LEFT = "\x1b[G"       # CSI G — cursor to column 1
-CLEAR_TERMINAL = "\x1bc"     # RIS — full reset
+# Port of ansi-escapes clearTerminal:
+# On non-Windows: clear screen + clear scrollback + cursor home
+# On Windows: RIS (full reset)
+# Using \x1B[2J\x1B[3J\x1B[H instead of \x1bc (RIS) to avoid
+# full terminal state reset which causes flicker.
+CLEAR_TERMINAL = (
+    "\x1bc" if _platform.system() == "Windows"
+    else "\x1b[2J\x1b[3J\x1b[H"
+)
 BSU = "\x1b[?2026h"          # Begin Synchronized Update
 ESU = "\x1b[?2026l"          # End Synchronized Update
 CURSOR_NEXT_LINE = "\x1b[E"  # CSI E — cursor to next line col 1
