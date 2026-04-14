@@ -28,12 +28,11 @@ class RenderResult:
 
 
 def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
-    """Render the DOM tree, separating static and dynamic output.
+    """Render the DOM tree.
 
-    Static nodes (marked with ``_static``) are rendered into a
-    separate ``static_output`` string that the app writes once to
-    stdout. Dynamic content is rendered into ``output`` which
-    log-update redraws in place.
+    Returns the full rendered output. Static/dynamic separation is
+    handled at the app level by tracking which lines have already
+    been written to stdout.
 
     Parameters
     ----------
@@ -45,8 +44,7 @@ def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
     Returns
     -------
     RenderResult
-        Contains ``output`` (dynamic), ``output_height``, and
-        ``static_output`` (new static items to write once).
+        Rendered output with height.
     """
     if dom is None or dom.yoga_node is None:
         return RenderResult("", 0)
@@ -63,25 +61,39 @@ def renderer(dom: DOMElement | None, width: int | None = None) -> RenderResult:
     output_width = int(yn.get_computed_width())
     output_height = int(yn.get_computed_height())
 
-    # Pass 1: render only static nodes.
-    static_buf = Output(output_width, output_height)
-    _render_node(dom, static_buf, 0, 0, transformers=[], skip_static=False, only_static=True)
-    static_output = static_buf.get()
+    output_buf = Output(output_width, output_height)
+    _render_node(dom, output_buf, 0, 0, transformers=[], skip_static=False)
 
-    # Pass 2: render only dynamic nodes (skip static).
-    dynamic_buf = Output(output_width, output_height)
-    _render_node(dom, dynamic_buf, 0, 0, transformers=[], skip_static=True)
-    dynamic_output = dynamic_buf.get()
+    generated_output = output_buf.get()
 
-    # Dynamic output height = lines in dynamic output.
-    dynamic_lines = dynamic_output.split("\n")
-    dynamic_height = len(dynamic_lines)
+    # Count how many lines belong to static nodes.
+    static_line_count = _count_static_lines(dom)
+
+    if static_line_count > 0:
+        lines = generated_output.split("\n")
+        static_lines = "\n".join(lines[:static_line_count])
+        dynamic_lines = "\n".join(lines[static_line_count:])
+        return RenderResult(
+            output=dynamic_lines,
+            output_height=len(lines) - static_line_count,
+            static_output=static_lines,
+        )
 
     return RenderResult(
-        output=dynamic_output,
-        output_height=dynamic_height,
-        static_output=static_output,
+        output=generated_output,
+        output_height=output_height,
     )
+
+
+def _count_static_lines(dom: DOMElement) -> int:
+    """Count total rendered lines from _static nodes."""
+    count = 0
+    for child in dom.children:
+        if isinstance(child, DOMElement) and child.style.get("_static"):
+            yn = child.yoga_node
+            if yn:
+                count += int(yn.get_computed_height())
+    return count
 
 
 def render_to_string(dom: DOMElement | None, width: int | None = None) -> str:
@@ -96,17 +108,11 @@ def _render_node(
     offset_y: int,
     *,
     transformers: list[Callable] | None = None,
-    skip_static: bool = True,
-    only_static: bool = False,
+    skip_static: bool = False,
 ) -> None:
     """Recursively render a DOM node to the output buffer.
 
-    Parameters
-    ----------
-    skip_static : bool
-        Skip nodes marked ``_static`` (render dynamic only).
-    only_static : bool
-        Only render nodes inside ``_static`` subtrees.
+    Matches Ink's renderNodeToOutput() exactly.
     """
     if isinstance(node, TextNode):
         return
@@ -119,22 +125,7 @@ def _render_node(
     if display == "none":
         return
 
-    is_static = node.style.get("_static")
-
-    if skip_static and is_static:
-        return
-
-    if only_static and not is_static:
-        # Not a static node — check if any children are static.
-        # Only recurse into containers that might hold static children.
-        if node.node_name in ("ink-root", "ink-box"):
-            for child in node.children:
-                _render_node(
-                    child, output, offset_x, offset_y,
-                    transformers=transformers,
-                    skip_static=False,
-                    only_static=True,
-                )
+    if skip_static and node.style.get("_static"):
         return
 
     # Left and top positions are relative to parent (matching Ink)
@@ -209,7 +200,6 @@ def _render_node(
                 child, output, x, y,
                 transformers=new_transformers,
                 skip_static=skip_static,
-                only_static=only_static,
             )
 
         if clipped:
@@ -246,10 +236,7 @@ def _render_background(
 
 
 def _apply_padding_to_text(node: DOMElement, text: str) -> str:
-    """Apply padding offset to text. Matches Ink's applyPaddingToText.
-
-    Takes X and Y of the first child's yoga node and uses them as offset.
-    """
+    """Apply padding offset to text. Matches Ink's applyPaddingToText."""
     if node.children:
         first_child = node.children[0]
         if isinstance(first_child, DOMElement) and first_child.yoga_node:

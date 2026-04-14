@@ -115,6 +115,7 @@ class App:
         self._last_output_height = 0
         self._last_terminal_width = get_terminal_size()[0]
         self._full_static_output = ""
+        self._last_static_line_count = 0
 
         self._loop: asyncio.AbstractEventLoop | None = None
         self._exit_event: asyncio.Event | None = None
@@ -178,8 +179,17 @@ class App:
         width = get_terminal_size()[0]
         result = renderer(dom, width=width)
 
+        # Only pass NEW static lines to the frame renderer.
+        new_static = ""
+        if result.static_output:
+            lines = result.static_output.split("\n")
+            if len(lines) > self._last_static_line_count:
+                new_lines = lines[self._last_static_line_count:]
+                new_static = "\n".join(new_lines) + "\n"
+                self._last_static_line_count = len(lines)
+
         self._render_interactive_frame(
-            result.output, result.output_height, result.static_output,
+            result.output, result.output_height, new_static,
         )
 
     # ── Port of ink.tsx renderInteractiveFrame (lines 1030-1095) ──
@@ -203,7 +213,8 @@ class App:
         static_output : str, optional
             One-shot static content that scrolls off (default ``""``).
         """
-        has_static = static_output and static_output.strip()
+        # Port of ink.tsx renderInteractiveFrame (lines 1030-1095)
+        has_static_output = static_output != ""
         is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
         viewport_rows = get_terminal_size()[1] if is_tty else 24
         is_fullscreen = is_tty and output_height >= viewport_rows
@@ -217,17 +228,23 @@ class App:
             self._is_unmounting,
         )
 
-        if has_static:
-            # Write static output once — it scrolls off naturally.
-            self._log.clear()
-            self._stdout_write(static_output + "\n")
-            self._full_static_output += static_output + "\n"
-            self._log(output_to_render)
-        elif should_clear:
+        if should_clear:
+            # Full terminal clear — prepend all previously written static output.
             self._stdout_write(
                 CLEAR_TERMINAL + self._full_static_output + output,
             )
+            self._last_output = output
+            self._last_output_to_render = output_to_render
+            self._last_output_height = output_height
             self._log.sync(output_to_render)
+            return
+
+        if has_static_output:
+            # Clear dynamic output, write static to scrollback, redraw dynamic.
+            self._log.clear()
+            self._stdout_write(static_output)
+            self._full_static_output += static_output
+            self._log(output_to_render)
         elif output != self._last_output:
             self._log(output_to_render)
 

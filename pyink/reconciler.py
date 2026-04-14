@@ -275,8 +275,8 @@ class Reconciler:
         # Built-in element
         el = create_element(fiber.node_type or "ink-box")
         el.style = dict(fiber.props)
-        # Remove non-style props
-        for key in ("_static", "children"):
+        # Remove non-style props (keep _static for renderer)
+        for key in ("children",):
             el.style.pop(key, None)
 
         for child_fiber in fiber.child_fibers:
