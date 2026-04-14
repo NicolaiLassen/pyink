@@ -43,13 +43,20 @@ class Reconciler:
         return self.root_fiber
 
     def schedule_update(self, fiber: Fiber) -> None:
-        """Called by set_state. Batches updates via the event loop."""
+        """Called by set_state. Batches updates via the event loop.
+
+        Uses call_soon_threadsafe so background threads can trigger
+        re-renders (e.g. streaming responses).
+        """
         fid = id(fiber)
         self._dirty_fibers.add(fid)
         self._dirty_fiber_map[fid] = fiber
         if not self._render_scheduled and self._loop:
             self._render_scheduled = True
-            self._loop.call_soon(self._flush_updates)
+            try:
+                self._loop.call_soon_threadsafe(self._flush_updates)
+            except RuntimeError:
+                self._render_scheduled = False
 
     def _flush_updates(self) -> None:
         """Process all dirty fibers in a single batch."""
