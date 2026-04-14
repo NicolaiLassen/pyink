@@ -355,9 +355,12 @@ class Reconciler:
         if not isinstance(node, DOMElement):
             return
 
-        # Mark static dirty if this is a static node (reconciler.ts line 303-305)
-        if node.internal_static:
-            self._root_node.is_static_dirty = True
+        # In Ink, commitUpdate marks isStaticDirty on any static node update
+        # (reconciler.ts line 303-305). However, Ink uses useLayoutEffect
+        # which fires synchronously during commit, clearing static children
+        # before the render. pyink uses use_effect (async), so we only mark
+        # dirty when children actually change (detected by _sync_children_dom).
+        # The _create_dom_node path already marks dirty on first mount.
 
         _skip = (
             "children", "key", "internal_transform",
@@ -430,6 +433,10 @@ class Reconciler:
                 for i in range(len(target_children))
             ):
                 return
+
+        # If this is a static node and children changed, mark dirty
+        if parent_dom.internal_static:
+            self._root_node.is_static_dirty = True
 
         # Build set of target node ids
         target_ids = {id(n) for n in target_children}
