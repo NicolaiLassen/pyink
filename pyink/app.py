@@ -213,7 +213,6 @@ class App:
             self._render_pending = True
             if self._render_handle:
                 self._render_handle.cancel()
-            # Throttle: schedule render after throttle interval
             if self._render_throttle_ms > 0:
                 self._render_handle = self._loop.call_later(
                     self._render_throttle_ms / 1000.0, self._on_render
@@ -231,8 +230,6 @@ class App:
 
     def _on_render(self) -> None:
         """Port of ink.tsx onRender() lines 520-630."""
-        self._render_pending = False
-        self._render_handle = None
 
         if self._is_unmounted:
             return
@@ -318,11 +315,11 @@ class App:
         static_output : str, optional
             One-shot static content that scrolls off (default ``""``).
         """
-        # Port of ink.tsx renderInteractiveFrame (lines 1030-1095)
+        # 1:1 port of ink.tsx renderInteractiveFrame (lines 1030-1095)
         has_static_output = static_output != ""
         is_tty = hasattr(self.stdout, "isatty") and self.stdout.isatty()
-        viewport_rows = get_terminal_size()[1] if is_tty else 24
 
+        viewport_rows = get_terminal_size()[1] if is_tty else 24
         is_fullscreen = is_tty and output_height >= viewport_rows
         output_to_render = output if is_fullscreen else output + "\n"
 
@@ -334,44 +331,42 @@ class App:
             self._is_unmounting,
         )
 
-        sync = self._should_sync()
+        if should_clear:
+            sync = self._should_sync()
+            if sync:
+                self._stdout_write(BSU)
 
-        if has_static_output:
-            # Static output MUST be written first — before any clear.
-            # Otherwise should_clear would drop it (the bug that caused
-            # response text and stats to vanish after long streaming).
-            if sync:
-                self._stdout_write(BSU)
-            self._log.clear()
-            self._stdout_write(static_output)
-            self._log(output_to_render)
-            if sync:
-                self._stdout_write(ESU)
-        elif should_clear:
-            # Port of ink.tsx lines 1052-1070: viewport overflow recovery.
-            # erase_lines() can't reach scrollback, so clear everything
-            # (viewport + scrollback) with \x1b[2J\x1b[3J\x1b[H, then
-            # rewrite fullStaticOutput + output from scratch. Finally
-            # sync log-update state so future erases use correct count.
-            if sync:
-                self._stdout_write(BSU)
+            # clearTerminal = \x1b[2J\x1b[3J\x1b[H (Ink's ansiEscapes.clearTerminal)
             self._stdout_write(
                 "\x1b[2J\x1b[3J\x1b[H"
                 + self._full_static_output
                 + output,
             )
-            self._log.reset()
-            self._log.sync(output_to_render)
             self._last_output = output
             self._last_output_to_render = output_to_render
             self._last_output_height = output_height
+            self._log.sync(output_to_render)
+
             if sync:
                 self._stdout_write(ESU)
+
             return
+
+        if has_static_output:
+            sync = self._should_sync()
+            if sync:
+                self._stdout_write(BSU)
+
+            self._log.clear()
+            self._stdout_write(static_output)
+            self._log(output_to_render)
+
+            if sync:
+                self._stdout_write(ESU)
         elif output != self._last_output or self._log.is_cursor_dirty():
-            # Port of ink.tsx throttledLog (lines 367-388):
-            # Wrap normal log writes with BSU/ESU to prevent flicker
+            # throttledLog wraps with BSU/ESU at write time
             should_write = self._log.will_render(output_to_render)
+            sync = self._should_sync()
             if sync and should_write:
                 self._stdout_write(BSU)
             self._log(output_to_render)
