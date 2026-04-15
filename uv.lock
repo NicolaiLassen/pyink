@@ -479,7 +479,7 @@ wheels = [
 
 [[package]]
 name = "pyinklib"
-version = "0.0.7"
+version = "1.1.4"
 source = { editable = "." }
 dependencies = [
     { name = "pyyoga" },

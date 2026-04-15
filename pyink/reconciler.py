@@ -651,71 +651,81 @@ class Reconciler:
     # ── Commit ──
 
     def _commit(self) -> None:
-        """Port of resetAfterCommit + useLayoutEffect flush.
+        """Port of React's commit phase.
 
-        Ink's sequence:
-        1. resetAfterCommit → onImmediateRender (writes static)
-        2. useLayoutEffect → setIndex(N) → synchronous re-render
-        3. Re-render clears static children (internal, no output)
-        4. useEffect fires after everything
+        Matches React/Ink's sequence:
+        1. resetAfterCommit → render frame to terminal
+        2. Run useLayoutEffect callbacks
+        3. If layout effects called setState → re-render + commit again
+        4. Run useEffect callbacks
+
+        Only layout-effect-triggered updates get recursive commits.
+        Background thread updates (set_stream, set_history from other
+        threads) are left in _dirty_fibers for the next _flush_updates
+        cycle — they get their own full _commit with _on_commit.
         """
         if self.root_fiber:
             self.root_fiber.dom_node = self._root_node
 
-        # Step 1: Notify App (renders frame with current DOM)
+        # Step 1: resetAfterCommit — render frame to terminal
         self._on_commit()
 
         if self.root_fiber:
+            # Snapshot fibers dirty BEFORE layout effects (from bg threads).
+            pre_layout = set(self._dirty_fibers)
+
             # Step 2: Run layout effects (may call set_state)
             self._run_all_layout_effects(self.root_fiber)
 
-            # Step 3: Flush layout-effect-triggered updates SILENTLY.
-            # This is an internal synchronous re-render — do NOT notify
-            # the App again. The DOM is updated but no frame is written.
-            # This matches Ink where the layout effect re-render's
-            # resetAfterCommit sees empty static → does nothing visible.
-            self._flush_layout_updates()
+            # Step 3: Process ONLY layout-effect-triggered fibers.
+            # Background thread fibers stay in _dirty_fibers for the
+            # next _flush_updates cycle (where they get _on_commit).
+            layout_dirty_ids = self._dirty_fibers - pre_layout
+            if layout_dirty_ids:
+                layout_fibers = [
+                    self._dirty_fiber_map[fid]
+                    for fid in layout_dirty_ids
+                    if fid in self._dirty_fiber_map
+                ]
 
-            # Step 4: Run regular effects
+                # Remove only layout fibers from the dirty set.
+                # Background fibers remain for later processing.
+                for fid in layout_dirty_ids:
+                    self._dirty_fibers.discard(fid)
+                    self._dirty_fiber_map.pop(fid, None)
+
+                # Filter out descendants
+                dirty_ids = {id(f) for f in layout_fibers}
+                top_fibers: list[Fiber] = []
+                for fiber in layout_fibers:
+                    ancestor = fiber.parent
+                    is_descendant = False
+                    while ancestor is not None:
+                        if id(ancestor) in dirty_ids:
+                            is_descendant = True
+                            break
+                        ancestor = ancestor.parent
+                    if not is_descendant:
+                        top_fibers.append(fiber)
+
+                for fiber in top_fibers:
+                    self._render_fiber(
+                        fiber,
+                        is_inside_text=self._is_fiber_inside_text(fiber),
+                    )
+
+                if self.root_fiber:
+                    self.root_fiber.dom_node = self._root_node
+                    from pyink.layout.engine import build_yoga_tree
+
+                    build_yoga_tree(self._root_node)
+
+                # Recursive commit for layout-effect updates only
+                self._commit()
+                return  # effects run in the deepest commit
+
+            # Step 4: Run passive effects (only when no more nested commits)
             self._run_all_effects(self.root_fiber)
-
-    def _flush_layout_updates(self) -> None:
-        """Flush state updates triggered by layout effects.
-
-        Re-renders dirty fibers synchronously WITHOUT notifying the App.
-        Runs recursively until no more layout effects trigger updates.
-        """
-        if not self._dirty_fibers:
-            return
-
-        fibers = [self._dirty_fiber_map[fid] for fid in self._dirty_fibers]
-        self._dirty_fibers.clear()
-        self._dirty_fiber_map.clear()
-        self._render_scheduled = False  # cancel pending async flush
-
-        for fiber in fibers:
-            self._render_fiber(
-                fiber,
-                is_inside_text=self._is_fiber_inside_text(fiber),
-            )
-
-        if self.root_fiber:
-            self.root_fiber.dom_node = self._root_node
-
-            # Recompute yoga layout after DOM changes from layout effects.
-            # Without this, the yoga positions are stale (e.g. static node
-            # still occupies space even after children are cleared).
-            from pyink.layout.engine import build_yoga_tree
-
-            build_yoga_tree(self._root_node)
-
-        # Run layout effects on re-rendered fibers (may trigger more updates)
-        if self.root_fiber:
-            self._run_all_layout_effects(self.root_fiber)
-
-        # Recurse if more updates were triggered
-        if self._dirty_fibers:
-            self._flush_layout_updates()
 
     def _run_all_layout_effects(self, fiber: Fiber) -> None:
         """Run layout effects synchronously during commit."""

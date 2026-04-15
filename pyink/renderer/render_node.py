@@ -181,7 +181,8 @@ def renderer(
         static_buf = Output(sw, sh)
         _render_node(sn, static_buf, 0, 0, transformers=[], mode="all")
         static_raw, _sh = static_buf.get()
-        static_raw = static_raw.rstrip("\n")
+        # Always append \n so trailing empty grid rows (from yoga
+        # margin_bottom) produce visible blank lines in scrollback.
         if static_raw.strip():
             static_output = static_raw + "\n"
 

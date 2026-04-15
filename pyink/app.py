@@ -268,8 +268,6 @@ class App:
             result.static_output and result.static_output != "\n"
         )
 
-
-
         # Debug mode: write each update as separate output (ink.tsx lines 543-553)
         if self._debug:
             if is_static_write:
@@ -337,10 +335,19 @@ class App:
 
         sync = self._should_sync()
 
-        if should_clear:
-            # Clear and rewrite. Use log.clear() + log() instead of
-            # CLEAR_TERMINAL to avoid scrollback duplication in terminals
-            # that don't support \x1b[3J (clear scrollback).
+        if has_static_output:
+            # Static output MUST be written first — before any clear.
+            # Otherwise should_clear would drop it (the bug that caused
+            # response text and stats to vanish after long streaming).
+            if sync:
+                self._stdout_write(BSU)
+            self._log.clear()
+            self._stdout_write(static_output)
+            self._log(output_to_render)
+            if sync:
+                self._stdout_write(ESU)
+        elif should_clear:
+            # Clear and rewrite (no static output to preserve).
             if sync:
                 self._stdout_write(BSU)
             self._log.clear()
@@ -351,17 +358,6 @@ class App:
             if sync:
                 self._stdout_write(ESU)
             return
-
-        if has_static_output:
-            # Clear dynamic output, write static to scrollback, redraw dynamic.
-            if sync:
-                self._stdout_write(BSU)
-            self._log.clear()
-            self._stdout_write(static_output)
-            self._full_static_output += static_output
-            self._log(output_to_render)
-            if sync:
-                self._stdout_write(ESU)
         elif output != self._last_output or self._log.is_cursor_dirty():
             # Port of ink.tsx throttledLog (lines 367-388):
             # Wrap normal log writes with BSU/ESU to prevent flicker
