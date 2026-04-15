@@ -8,18 +8,20 @@ from __future__ import annotations
 
 import re
 
-# Match all ANSI escape sequences
+# Match all ANSI escape sequences (comprehensive)
 _ANSI_RE = re.compile(
     r"("
-    r"\x1b\[[0-9;]*[A-HJKSTfm]"  # CSI sequences
-    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences
-    r"|\x1b[NOPc]"  # SS2, SS3, DCS, RIS
-    r"|\x1b\[[?!>][0-9;]*[a-z]"  # Private CSI sequences
+    r"\x1b\[[0-9;:]*[a-zA-Z]"              # CSI sequences (incl. colon-separated SGR)
+    r"|\x1b\[\?[0-9;]*[a-zA-Z]"            # Private CSI (?25h etc.)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences (hyperlinks, titles)
+    r"|\x1b[NOPc]"                          # SS2, SS3, DCS, RIS
+    r"|\x9b[0-9;:]*[a-zA-Z]"               # 8-bit CSI (C1 control)
     r")"
 )
 
 # SGR (Select Graphic Rendition) — colors and styles: ESC [ ... m
-_SGR_RE = re.compile(r"^\x1b\[[0-9;]*m$")
+# Includes colon-separated params for 38:2:R:G:B truecolor
+_SGR_RE = re.compile(r"^\x1b\[[0-9;:]*m$")
 
 # OSC (Operating System Command) — hyperlinks etc: ESC ] ... BEL/ST
 _OSC_RE = re.compile(r"^\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)$")

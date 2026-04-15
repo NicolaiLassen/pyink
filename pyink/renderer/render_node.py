@@ -5,6 +5,7 @@ backgrounds, text with wrapping/truncation, and overflow clipping.
 """
 from __future__ import annotations
 
+import re as _re
 import shutil
 from collections.abc import Callable
 from typing import Any
@@ -454,8 +455,52 @@ def _wrap_text_with_mode(text: str, max_width: int, wrap_mode: str) -> str:
         return "\n".join(_wrap_text(text, max_width))
 
 
+# Comprehensive ANSI regex for tokenizing text into (ansi_seq | char) chunks.
+_ANSI_TOKEN_RE = _re.compile(
+    r"(\x1b\[[0-9;:]*[a-zA-Z]"
+    r"|\x1b\[\?[0-9;]*[a-zA-Z]"
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    r"|\x1b[NOPc]"
+    r"|\x9b[0-9;:]*[a-zA-Z])"
+)
+
+
+def _ansi_tokenize(text: str) -> list[tuple[str, int]]:
+    """Split text into (chunk, visible_width) pairs.
+
+    ANSI escape sequences get width 0. Visible characters get their
+    display width (2 for CJK wide chars, 1 otherwise).
+    """
+    result: list[tuple[str, int]] = []
+    last = 0
+    for m in _ANSI_TOKEN_RE.finditer(text):
+        # Plain text before this ANSI sequence
+        start, end = m.start(), m.end()
+        if start > last:
+            for ch in text[last:start]:
+                result.append((ch, _visible_char_width(ch)))
+        # The ANSI sequence itself (zero width)
+        result.append((m.group(0), 0))
+        last = end
+    # Remaining plain text
+    if last < len(text):
+        for ch in text[last:]:
+            result.append((ch, _visible_char_width(ch)))
+    return result
+
+
+def _visible_char_width(ch: str) -> int:
+    """Width of a single visible character."""
+    import unicodedata
+    try:
+        eaw = unicodedata.east_asian_width(ch)
+        return 2 if eaw in ("W", "F") else 1
+    except Exception:
+        return 1
+
+
 def _wrap_text_hard(text: str, max_width: int) -> list[str]:
-    """Hard wrap at exact character position."""
+    """Hard wrap at exact character position, ANSI-aware."""
     if max_width <= 0:
         return [text]
     lines: list[str] = []
@@ -463,50 +508,64 @@ def _wrap_text_hard(text: str, max_width: int) -> list[str]:
         if not raw_line:
             lines.append("")
             continue
-        pos = 0
-        while pos < len(raw_line):
-            end = pos
-            w = 0
-            while end < len(raw_line):
-                cw = visible_width(raw_line[end])
-                if w + cw > max_width:
-                    break
+        tokens = _ansi_tokenize(raw_line)
+        current: list[str] = []
+        w = 0
+        for chunk, cw in tokens:
+            if cw == 0:
+                # ANSI sequence — always include, doesn't affect width
+                current.append(chunk)
+            elif w + cw > max_width:
+                lines.append("".join(current))
+                current = [chunk]
+                w = cw
+            else:
+                current.append(chunk)
                 w += cw
-                end += 1
-            lines.append(raw_line[pos:end])
-            pos = end
+        if current:
+            lines.append("".join(current))
     return lines if lines else [""]
 
 
 def _truncate(text: str, max_width: int) -> str:
+    """Truncate text at max_width, ANSI-aware."""
     if max_width <= 0:
         return ""
-    result = ""
+    tokens = _ansi_tokenize(text)
+    result: list[str] = []
     w = 0
-    for ch in text:
-        cw = visible_width(ch)
-        if w + cw > max_width:
+    for chunk, cw in tokens:
+        if cw == 0:
+            result.append(chunk)
+        elif w + cw > max_width:
             break
-        result += ch
-        w += cw
-    return result
+        else:
+            result.append(chunk)
+            w += cw
+    return "".join(result)
 
 
 def _truncate_start(text: str, max_width: int) -> str:
+    """Truncate from the start, keeping the last max_width columns, ANSI-aware."""
     if max_width <= 0:
         return ""
-    result = ""
+    tokens = _ansi_tokenize(text)
+    result: list[str] = []
     w = 0
-    for ch in reversed(list(text)):
-        cw = visible_width(ch)
-        if w + cw > max_width:
+    for chunk, cw in reversed(tokens):
+        if cw == 0:
+            result.append(chunk)
+        elif w + cw > max_width:
             break
-        result = ch + result
-        w += cw
-    return result
+        else:
+            result.append(chunk)
+            w += cw
+    result.reverse()
+    return "".join(result)
 
 
 def _truncate_middle(text: str, max_width: int) -> str:
+    """Truncate from the middle with ellipsis, ANSI-aware."""
     if max_width <= 3:
         return _truncate(text, max_width)
     half = (max_width - 1) // 2

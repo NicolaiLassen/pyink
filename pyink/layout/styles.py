@@ -150,7 +150,7 @@ def _apply_flex_styles(yn: Any, style: dict) -> None:
         if isinstance(val, (int, float)):
             yn.flex_basis = val
         elif isinstance(val, str):
-            yn.flex_basis = int(val.rstrip("%"))
+            yn.flex_basis = int(float(val.rstrip("%")))
     if "align_items" in style:
         ai_map = {
             "stretch": yoga.Align.Stretch,
@@ -200,7 +200,9 @@ def _apply_dimension_styles(yn: Any, style: dict) -> None:
             continue
         val = style[prop]
         if isinstance(val, str) and val.endswith("%"):
-            setattr(yn, prop, int(val.rstrip("%")))
+            # JS parseInt("33.5", 10) → 33; Python int("33.5") raises.
+            # Use int(float(...)) for compatibility.
+            setattr(yn, prop, int(float(val.rstrip("%"))))
         elif isinstance(val, (int, float)):
             setattr(yn, prop, val)
 

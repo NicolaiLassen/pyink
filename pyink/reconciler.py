@@ -25,7 +25,47 @@ from pyink.fiber import Fiber
 from pyink.hooks.context import _current_app, _current_fiber, _schedule_update
 from pyink.hooks.use_effect import cleanup_effects, run_effects, run_layout_effects
 from pyink.layout.styles import apply_styles
-from pyink.vnode import VNode
+from pyink.vnode import Box, Text, VNode
+
+
+def _build_error_display(exc_info: tuple) -> VNode:
+    """Build a VNode that displays an error, matching Ink's ErrorOverview.
+
+    Shows error type, message, and a condensed stack trace in the terminal
+    instead of crashing the app.
+    """
+    import traceback
+
+    _type, value, tb = exc_info
+    error_name = _type.__name__ if _type else "Error"
+    error_msg = str(value) if value else ""
+
+    # Format stack trace (last 5 frames)
+    if tb:
+        frames = traceback.extract_tb(tb)[-5:]
+        tb_lines = []
+        for frame in frames:
+            tb_lines.append(f"  {frame.filename}:{frame.lineno} in {frame.name}")
+            if frame.line:
+                tb_lines.append(f"    {frame.line}")
+        tb_text = "\n".join(tb_lines)
+    else:
+        tb_text = ""
+
+    children: list[VNode | str] = [
+        Text(" ERROR ", color="white", background_color="red", bold=True),
+        Text(f" {error_name}: {error_msg}", color="red", bold=True),
+    ]
+    if tb_text:
+        children.append(Text(tb_text, color="red", dim_color=True))
+
+    return Box(
+        *children,
+        flex_direction="column",
+        padding=1,
+        border_style="round",
+        border_color="red",
+    )
 
 
 def _diff(
@@ -165,12 +205,16 @@ class Reconciler:
             else:
                 self._reconcile_children(fiber, [str(result)], is_inside_text)
         except Exception:
+            # Port of Ink's ErrorBoundary + ErrorOverview: catch component
+            # render errors and display them inline instead of crashing.
             import sys
             import traceback
 
             traceback.print_exc(file=sys.stderr)
-            if self._app and hasattr(self._app, "request_exit"):
-                self._app.request_exit(1)
+
+            # Build an error display VNode (port of ErrorOverview)
+            error_vnode = _build_error_display(sys.exc_info())
+            self._reconcile_children(fiber, [error_vnode], is_inside_text)
         finally:
             _current_fiber.reset(token)
             _schedule_update.reset(schedule_token)

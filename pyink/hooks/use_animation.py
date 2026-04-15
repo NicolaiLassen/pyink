@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from pyink.hooks.context import get_current_app
-from pyink.hooks.use_effect import use_effect
+from pyink.hooks.use_effect import use_layout_effect
 from pyink.hooks.use_ref import use_ref
 from pyink.hooks.use_state import use_state
 
@@ -102,7 +102,9 @@ def use_animation(
         )
         return lambda: app.remove_timer(handle)
 
-    use_effect(effect, (is_active, interval))
+    # Port of Ink's use-animation.ts: useLayoutEffect for synchronous
+    # subscription during commit, matching React's timing semantics.
+    use_layout_effect(effect, (is_active, interval))
 
     return AnimationResult(
         frame=frame,

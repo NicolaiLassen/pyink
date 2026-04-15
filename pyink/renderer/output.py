@@ -9,8 +9,25 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_ANSI_RE = re.compile(r"(\x1b\[[0-9;]*[a-zA-Z])")
-_ANSI_STRIP_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+# Comprehensive ANSI escape sequence matching.
+# Handles: standard CSI (ESC[...X), colon-separated SGR (ESC[38:2:R:G:Bm),
+# private CSI (ESC[?25h), OSC (ESC]...BEL/ST), 8-bit CSI (0x9B), SS2/SS3/DCS/RIS.
+_ANSI_RE = re.compile(
+    r"("
+    r"\x1b\[[0-9;:]*[a-zA-Z]"              # CSI with colons (SGR 38:2:R:G:B etc.)
+    r"|\x1b\[\?[0-9;]*[a-zA-Z]"            # Private CSI (?25h, ?2026h etc.)
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC sequences (hyperlinks, titles)
+    r"|\x1b[NOPc]"                          # SS2, SS3, DCS, RIS
+    r"|\x9b[0-9;:]*[a-zA-Z]"               # 8-bit CSI (C1 control)
+    r")"
+)
+_ANSI_STRIP_RE = re.compile(
+    r"\x1b\[[0-9;:]*[a-zA-Z]"
+    r"|\x1b\[\?[0-9;]*[a-zA-Z]"
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    r"|\x1b[NOPc]"
+    r"|\x9b[0-9;:]*[a-zA-Z]"
+)
 RESET = "\x1b[0m"
 
 
@@ -38,7 +55,8 @@ def _tokenize_styled(text: str) -> list[tuple[str, str]]:
         if not part:
             continue
         if _ANSI_RE.fullmatch(part):
-            if part == RESET:
+            # SGR 0 (reset): \x1b[0m or \x1b[m
+            if part == RESET or part == "\x1b[m":
                 current_styles.clear()
             else:
                 current_styles.append(part)

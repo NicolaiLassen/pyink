@@ -485,7 +485,13 @@ def _widest_line(text: str) -> int:
     """Get the visible width of the widest line in text."""
     import re
 
-    ansi_re = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+    ansi_re = re.compile(
+        r"\x1b\[[0-9;:]*[a-zA-Z]"
+        r"|\x1b\[\?[0-9;]*[a-zA-Z]"
+        r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+        r"|\x1b[NOPc]"
+        r"|\x9b[0-9;:]*[a-zA-Z]"
+    )
     max_width = 0
     for line in text.split("\n"):
         clean = ansi_re.sub("", line)

@@ -13,8 +13,15 @@ import pyyoga as yoga
 from pyink.dom import DOMElement, squash_text_nodes
 from pyink.layout.styles import apply_styles
 
-# Regex to strip ANSI escape sequences for width measurement
-_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+# Comprehensive ANSI regex — matches CSI (with colons for 38:2:R:G:B),
+# private CSI (?25h), OSC sequences, SS2/SS3/DCS/RIS, and 8-bit CSI.
+_ANSI_RE = re.compile(
+    r"\x1b\[[0-9;:]*[a-zA-Z]"
+    r"|\x1b\[\?[0-9;]*[a-zA-Z]"
+    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
+    r"|\x1b[NOPc]"
+    r"|\x9b[0-9;:]*[a-zA-Z]"
+)
 
 
 def visible_width(text: str) -> int:
@@ -45,12 +52,15 @@ def visible_width(text: str) -> int:
 
 
 def _wrap_text(text: str, max_width: int) -> list[str]:
-    """Wrap text to max_width, respecting word boundaries where possible.
+    """Wrap text to max_width, respecting word boundaries, ANSI-aware.
+
+    ANSI escape sequences are preserved across word boundaries and don't
+    contribute to visible width calculations.
 
     Parameters
     ----------
     text : str
-        The text to wrap.
+        The text to wrap (may contain ANSI escape sequences).
     max_width : int
         Maximum visible width per line.
 
@@ -68,6 +78,8 @@ def _wrap_text(text: str, max_width: int) -> list[str]:
             lines.append("")
             continue
 
+        # Split on spaces but preserve ANSI sequences within words.
+        # visible_width already strips ANSI for measurement.
         words = raw_line.split(" ")
         current = ""
         for word in words:
