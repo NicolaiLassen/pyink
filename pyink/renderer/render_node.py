@@ -141,7 +141,7 @@ def renderer(
         except Exception:
             width = 80
 
-    compute_layout(dom, width, 500)
+    compute_layout(dom, width)
 
     # Screen reader path (port of renderer.ts lines 14–35)
     if is_screen_reader_enabled:
@@ -183,6 +183,7 @@ def renderer(
         static_raw = static_raw.rstrip("\n")
         if static_raw.strip():
             static_output = static_raw + "\n"
+
 
     return RenderResult(
         output=generated_output,

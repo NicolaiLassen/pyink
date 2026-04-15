@@ -71,6 +71,7 @@ def smoke_repl(initial_history):
     cursor, set_cursor = use_state(0)
     phase, set_phase = use_state("idle")
     spinner_text, set_spinner_text = use_state("")
+    stream_buf, set_stream = use_state("")
 
     cmd_hist = use_ref([])
     hist_idx = use_ref(-1)
@@ -105,7 +106,7 @@ def smoke_repl(initial_history):
             # Echo as user message
             set_history(lambda h: [*h, {"type": "user", "text": msg}])
 
-            # Fake a response after a moment
+            # Fake a streaming response
             if msg == "/spin":
                 set_phase("spinning")
                 set_spinner_text("Thinking...")
@@ -113,11 +114,39 @@ def smoke_repl(initial_history):
                 set_phase("idle")
                 set_spinner_text("")
             else:
-                set_history(lambda h: [
-                    *h,
-                    {"type": "response", "ansi": f"Echo: {msg}"},
-                    {"type": "separator"},
-                ])
+                import threading
+
+                def _stream_response(message: str) -> None:
+                    import time
+
+                    responses = [
+                        f"Great question! Let me think about '{message}' for a moment. The answer involves several interesting considerations.",
+                        f"Thanks for asking about '{message}'. Here's what I know: it's a fascinating topic with many dimensions to explore.",
+                        f"I'd be happy to help with '{message}'. First, let's break this down into smaller parts we can analyze.",
+                        f"Interesting! '{message}' is something I've thought about. The key insight is that context matters enormously.",
+                        f"Let me process '{message}'. After careful analysis, I believe the most important factor is clarity of intent.",
+                    ]
+                    import random
+                    words = random.choice(responses).split()
+                    set_phase("streaming")
+                    set_stream("")
+                    accumulated = ""
+                    for word in words:
+                        accumulated += (" " if accumulated else "") + word
+                        set_stream(accumulated)
+                        time.sleep(0.05)
+                    # Done streaming — move to history
+                    final = accumulated
+                    set_stream("")
+                    set_phase("idle")
+                    set_history(lambda h: [
+                        *h,
+                        {"type": "response", "ansi": final},
+                    ])
+
+                threading.Thread(
+                    target=_stream_response, args=(msg,), daemon=True
+                ).start()
             return
 
         # History navigation
@@ -168,17 +197,29 @@ def smoke_repl(initial_history):
 
     use_input(on_key)
 
-    # ── Build component tree (mirrors orx_repl exactly) ──
-    children = [Static(items=history, render_item=_history_item)]
+    # ── Build component tree ──
+    # Ink pattern from issue-450: Static on top, dynamic Box below with
+    # height = win.rows - static_items so total fits exactly in viewport.
+
+    # Dynamic content
+    dynamic_children = []
 
     # Spinner
     if phase == "spinning" and spinner_text:
-        children.append(
+        dynamic_children.append(
             Text(f"{frame_char} {spinner_text}", color=_ACCENT),
         )
 
+    # Streaming response
+    if phase == "streaming" and stream_buf:
+        dynamic_children.append(Box(
+            Text("\u25cf ", color=_ACCENT),
+            Text(stream_buf),
+            flex_direction="row",
+        ))
+
     # Flex-grow spacer pushes input to bottom
-    children.append(Box(flex_grow=1))
+    dynamic_children.append(Box(flex_grow=1))
 
     # Input area
     before = buf[:cursor]
@@ -196,9 +237,17 @@ def smoke_repl(initial_history):
         ),
         Text(_SEPARATOR, color=_MUTED, dim=True),
     ]
-    children.append(Box(*input_children, flex_direction="column"))
+    dynamic_children.append(Box(*input_children, flex_direction="column"))
 
-    return Box(*children, flex_direction="column", min_height=win.rows)
+    # Ink pattern: dynamic height = viewport - static items.
+    # Minimum 5 rows so input area (separator + prompt + separator) always visible.
+    dynamic_height = max(5, win.rows - len(history) - 2)
+
+    return Box(
+        Static(items=history, render_item=_history_item),
+        Box(*dynamic_children, flex_direction="column", height=dynamic_height),
+        flex_direction="column",
+    )
 
 
 def main():

@@ -269,6 +269,8 @@ class App:
             result.static_output and result.static_output != "\n"
         )
 
+
+
         # Debug mode: write each update as separate output (ink.tsx lines 543-553)
         if self._debug:
             if is_static_write:

@@ -28,28 +28,32 @@ def _make_element(node_type: str, *children: VNode | str, **props: Any) -> VNode
 def Box(*children: VNode | str, **props: Any) -> VNode:
     """Layout container with flexbox styling. Matches Ink's <Box>.
 
-    Applies Ink's default styles (Box.tsx lines 83–92):
-    flex_wrap='nowrap', flex_direction='row', flex_grow=0, flex_shrink=1.
+    Port of Box.tsx lines 83–91. Applies default styles:
+    ``flex_wrap='nowrap'``, ``flex_direction='row'``, ``flex_grow=0``,
+    ``flex_shrink=1``, and overflow defaults.
 
     Parameters
     ----------
     *children : VNode | str
         Child elements or text content.
     **props : Any
-        Flexbox style and layout properties.
+        Flexbox style and layout properties. Supports all yoga props:
+        ``flex_direction``, ``justify_content``, ``align_items``,
+        ``padding``, ``margin``, ``width``, ``height``, ``border_style``,
+        ``overflow``, etc.
 
     Returns
     -------
     VNode
         A virtual node representing the box element.
     """
-    # Port of Box.tsx lines 83-91: apply defaults before user props
+    # Port of Box.tsx lines 83–91: apply defaults before user props
     props.setdefault("flex_wrap", "nowrap")
     props.setdefault("flex_direction", "row")
     props.setdefault("flex_grow", 0)
     props.setdefault("flex_shrink", 1)
 
-    # Port of Box.tsx lines 90-91: overflow defaults
+    # Port of Box.tsx lines 90–91: overflow defaults
     overflow = props.get("overflow")
     if "overflow_x" not in props:
         props["overflow_x"] = props.get("overflow_x", overflow or "visible")
@@ -62,8 +66,13 @@ def Box(*children: VNode | str, **props: Any) -> VNode:
 def Text(*children: VNode | str, **props: Any) -> VNode:
     """Text display with styling. Matches Ink's <Text>.
 
-    Applies Ink's default styles (Text.tsx line 139):
-    flex_grow=0, flex_shrink=1, flex_direction='row', text_wrap='wrap'.
+    Port of Text.tsx line 139. Applies default styles:
+    ``flex_grow=0``, ``flex_shrink=1``, ``flex_direction='row'``,
+    ``text_wrap='wrap'``.
+
+    Supports: ``color``, ``background_color``, ``bold``, ``dim``,
+    ``dim_color``, ``italic``, ``underline``, ``strikethrough``,
+    ``inverse``, ``overline``, ``text_wrap``.
 
     Parameters
     ----------
@@ -109,7 +118,7 @@ def Newline(count: int = 1) -> VNode:
     Parameters
     ----------
     count : int, optional
-        Number of newlines to insert.
+        Number of newlines to insert (default ``1``).
 
     Returns
     -------
@@ -117,6 +126,72 @@ def Newline(count: int = 1) -> VNode:
         A virtual node containing the newline text.
     """
     return _make_element("ink-text", "\n" * count)
+
+
+# ── Static component ──
+
+# Cached component function — created lazily on first call so:
+# 1. No circular import (pyink.component imports pyink.vnode)
+# 2. The reconciler sees the SAME function identity on every render,
+#    preserving fiber hook state (index for "only render new items")
+_static_inner_fn: Callable | None = None
+
+
+def _get_static_inner() -> Callable:
+    """Lazily create and cache the ``_static_inner`` component.
+
+    Returns
+    -------
+    Callable
+        The cached component function.
+    """
+    global _static_inner_fn
+    if _static_inner_fn is not None:
+        return _static_inner_fn
+
+    from pyink.component import component
+    from pyink.hooks.use_effect import use_layout_effect
+    from pyink.hooks.use_state import use_state
+
+    @component
+    def _static_inner(items, render_item, style):
+        """Internal component for Static.
+
+        Port of Ink's Static.tsx lines 28–58. Uses ``useLayoutEffect``
+        to clear children after the first commit, so items are only
+        written to terminal scrollback once.
+        """
+        index, set_index = use_state(0)
+
+        # Only render items from index onward (new items).
+        items_to_render = items[index:] if items else []
+
+        def sync_index():
+            set_index(len(items) if items else 0)
+
+        # Port of Static.tsx lines 36–38: useLayoutEffect fires during
+        # commit (before render output), clearing children so they're
+        # only rendered to scrollback once.
+        use_layout_effect(sync_index, (len(items) if items else 0,))
+
+        rendered = []
+        if render_item and items_to_render:
+            rendered = [
+                render_item(item, index + i)
+                for i, item in enumerate(items_to_render)
+            ]
+
+        return _make_element(
+            "ink-box",
+            *rendered,
+            internal_static=True,
+            position="absolute",
+            flex_direction="column",
+            **style,
+        )
+
+    _static_inner_fn = _static_inner
+    return _static_inner_fn
 
 
 def Static(
@@ -127,8 +202,8 @@ def Static(
 ) -> VNode:
     """Render permanent output that doesn't re-render. Matches Ink's <Static>.
 
-    Only renders NEW items since the last render. Previously rendered
-    items are already in terminal scrollback.
+    Port of Ink's Static.tsx. Only renders NEW items since the last
+    render. Previously rendered items are already in terminal scrollback.
 
     Parameters
     ----------
@@ -140,50 +215,18 @@ def Static(
         Function called as ``render_item(item, index)`` to produce a VNode
         for each item.
     **props : Any
-        Additional properties.
+        Additional style properties passed to the container.
 
     Returns
     -------
     VNode
         A virtual node representing the static container.
     """
-    from pyink.component import component
-    from pyink.hooks.use_effect import use_layout_effect
-    from pyink.hooks.use_state import use_state
-
-    @component
-    def _static_inner(items, render_item, style):
-        index, set_index = use_state(0)
-
-        # Only render items from index onward (new items).
-        items_to_render = items[index:] if items else []
-
-        def sync_index():
-            set_index(len(items) if items else 0)
-
-        # useLayoutEffect — fires during commit, before render output.
-        # This clears children so the renderer only sees new items once.
-        # Matches Ink's Static.tsx line 36-38.
-        use_layout_effect(sync_index, (len(items) if items else 0,))
-
-        rendered = []
-        if render_item and items_to_render:
-            rendered = [render_item(item, index + i) for i, item in enumerate(items_to_render)]
-
-        return _make_element(
-            "ink-box",
-            *rendered,
-            internal_static=True,
-            position="absolute",
-            flex_direction="column",
-            **style,
-        )
-
-    # Extract style props to pass through.
     style = {k: v for k, v in props.items() if k not in ("items", "render_item")}
 
     if items is not None and render_item is not None:
-        return _static_inner(items=items, render_item=render_item, style=style)
+        inner = _get_static_inner()
+        return inner(items=items, render_item=render_item, style=style)
 
     # Direct children mode — no tracking needed, render all.
     props["internal_static"] = True
@@ -198,8 +241,9 @@ def Transform(
 ) -> VNode:
     """Apply transformations to string output. Matches Ink's <Transform>.
 
-    The transform function receives (line: str, index: int) and returns
-    the transformed string, applied per-line.
+    Port of Transform.tsx. The transform function receives
+    ``(line: str, index: int)`` and returns the transformed string,
+    applied per-line.
 
     Parameters
     ----------
@@ -216,7 +260,7 @@ def Transform(
         A virtual node representing the transform container.
     """
     props["internal_transform"] = transform
-    # Match Ink's Transform: flex_grow=0, flex_shrink=1, flex_direction=row
+    # Port of Transform.tsx: flex_grow=0, flex_shrink=1, flex_direction=row
     props.setdefault("flex_grow", 0)
     props.setdefault("flex_shrink", 1)
     props.setdefault("flex_direction", "row")

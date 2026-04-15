@@ -86,9 +86,11 @@ class Reconciler:
         self._root_node: DOMElement = create_node("ink-root")
 
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Assign the event loop used for scheduling batched updates."""
         self._loop = loop
 
     def set_app(self, app: Any) -> None:
+        """Assign the App instance used as context for hooks."""
         self._app = app
 
     # ── Mount ──
@@ -120,6 +122,10 @@ class Reconciler:
         fibers = [self._dirty_fiber_map[fid] for fid in self._dirty_fibers]
         self._dirty_fibers.clear()
         self._dirty_fiber_map.clear()
+
+        # If layout effects already flushed these updates, nothing to do.
+        if not fibers:
+            return
 
         for fiber in fibers:
             self._render_fiber(fiber, is_inside_text=self._is_fiber_inside_text(fiber))
@@ -477,17 +483,24 @@ class Reconciler:
 
         For component fibers only. Ensures that DOM nodes created during
         reconciliation are wired into the tree without disturbing siblings.
+        Also marks is_static_dirty if the ancestor is a static node.
         """
         parent_dom = self._find_host_dom(component_fiber)
         if parent_dom is None or not isinstance(parent_dom, DOMElement):
             return
 
+        added = False
         for child_fiber in component_fiber.child_fibers:
             nodes: list[DOMElement | TextNode] = []
             self._collect_host_nodes(child_fiber, nodes)
             for node in nodes:
                 if node.parent is not parent_dom:
+                    added = True
                     append_child(parent_dom, node)
+
+        # Mark static dirty if we added children to a static node
+        if added and parent_dom.internal_static:
+            self._root_node.is_static_dirty = True
 
     def _find_host_dom(self, fiber: Fiber) -> DOMElement | TextNode | None:
         """Find the nearest host DOM node for a fiber.
@@ -537,6 +550,7 @@ class Reconciler:
     # ── Fiber creation ──
 
     def _same_type(self, fiber: Fiber, vtype: str | Callable) -> bool:
+        """Check if a fiber matches a VNode type (by identity for components, by name for hosts)."""
         if callable(vtype):
             return fiber.component_fn is vtype
         return fiber.node_type == vtype
@@ -635,6 +649,13 @@ class Reconciler:
 
         if self.root_fiber:
             self.root_fiber.dom_node = self._root_node
+
+            # Recompute yoga layout after DOM changes from layout effects.
+            # Without this, the yoga positions are stale (e.g. static node
+            # still occupies space even after children are cleared).
+            from pyink.layout.engine import build_yoga_tree
+
+            build_yoga_tree(self._root_node)
 
         # Run layout effects on re-rendered fibers (may trigger more updates)
         if self.root_fiber:

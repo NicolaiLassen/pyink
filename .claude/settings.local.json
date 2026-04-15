@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from pyink.dom import *; print\\('dom.py loads OK'\\)\")",
+      "Bash(python -c \"from pyink.dom import create_node, create_element, create_text_node, append_child, remove_child, insert_before, set_attribute, set_style, set_text_node_value, find_closest_yoga_node, mark_node_as_dirty, add_layout_listener, emit_layout_listeners, squash_text_nodes, DOMElement, TextNode, DOMNode; print\\('All exports OK'\\)\")",
+      "Bash(python -m ruff check pyink/)",
+      "Bash(python -m pytest tests/ -x -q --tb=short)"
+    ]
+  }
+}
