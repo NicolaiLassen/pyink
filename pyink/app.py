@@ -230,6 +230,8 @@ class App:
 
     def _on_render(self) -> None:
         """Port of ink.tsx onRender() lines 520-630."""
+        self._render_pending = False
+        self._render_handle = None
 
         if self._is_unmounted:
             return
