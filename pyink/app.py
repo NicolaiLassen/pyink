@@ -353,7 +353,7 @@ class App:
             # when dynamic content exceeds the terminal viewport.
             if sync:
                 self._stdout_write(BSU)
-            self._stdout_write("\x1b[2J\x1b[H")  # clear screen + cursor home
+            self._stdout_write("\x1b[2J\x1b[3J\x1b[H")  # clear screen + scrollback + cursor home
             self._stdout_write(self._full_static_output + output_to_render)
             self._log.reset()
             self._log.sync(output_to_render)
