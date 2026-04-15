@@ -347,11 +347,16 @@ class App:
             if sync:
                 self._stdout_write(ESU)
         elif should_clear:
-            # Clear and rewrite (no static output to preserve).
+            # Viewport overflow: erase_lines() can't reach scrollback,
+            # so use \x1b[2J\x1b[H (clear visible screen + cursor home)
+            # and reset log state. This prevents cascading duplication
+            # when dynamic content exceeds the terminal viewport.
             if sync:
                 self._stdout_write(BSU)
-            self._log.clear()
-            self._log(output_to_render)
+            self._stdout_write("\x1b[2J\x1b[H")  # clear screen + cursor home
+            self._stdout_write(self._full_static_output + output_to_render)
+            self._log.reset()
+            self._log.sync(output_to_render)
             self._last_output = output
             self._last_output_to_render = output_to_render
             self._last_output_height = output_height
