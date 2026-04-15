@@ -41,10 +41,13 @@ def use_state(initial: T) -> tuple[T, Callable[[T | Callable[[T], T]], None]]:
     schedule = get_schedule_update()
 
     def set_state(new_value: T | Callable[[T], T]) -> None:
-        if callable(new_value):
-            new_value = new_value(fiber.hook_state[idx])
-        if new_value is not fiber.hook_state[idx]:
-            fiber.hook_state[idx] = new_value
-            schedule(fiber)
+        try:
+            if callable(new_value):
+                new_value = new_value(fiber.hook_state[idx])
+            if new_value is not fiber.hook_state[idx]:
+                fiber.hook_state[idx] = new_value
+                schedule(fiber)
+        except (RuntimeError, IndexError):
+            pass  # Fiber may be unmounted or loop closed
 
     return current_value, set_state

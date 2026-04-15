@@ -25,7 +25,6 @@ from pyink.reconciler import Reconciler
 from pyink.renderer.render_node import renderer
 from pyink.terminal import (
     BSU,
-    CLEAR_TERMINAL,
     ESU,
     get_terminal_size,
     should_synchronize,
@@ -339,16 +338,16 @@ class App:
         sync = self._should_sync()
 
         if should_clear:
-            # Full terminal clear — prepend all previously written static output.
+            # Clear and rewrite. Use log.clear() + log() instead of
+            # CLEAR_TERMINAL to avoid scrollback duplication in terminals
+            # that don't support \x1b[3J (clear scrollback).
             if sync:
                 self._stdout_write(BSU)
-            self._stdout_write(
-                CLEAR_TERMINAL + self._full_static_output + output,
-            )
+            self._log.clear()
+            self._log(output_to_render)
             self._last_output = output
             self._last_output_to_render = output_to_render
             self._last_output_height = output_height
-            self._log.sync(output_to_render)
             if sync:
                 self._stdout_write(ESU)
             return
@@ -1059,17 +1058,24 @@ def render(
         kitty_keyboard=kitty_keyboard,
     )
 
+    loop = None
     try:
         loop = asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+
+    if loop is not None and loop.is_running():
         instance = Instance(app)
         loop.create_task(app.run())
         return instance
-    except RuntimeError:
-        try:
-            asyncio.run(app.run())
-        except KeyboardInterrupt:
-            app._cleanup()
-        return None
+
+    try:
+        asyncio.run(app.run())
+    except (KeyboardInterrupt, SystemExit):
+        app._cleanup()
+    except Exception:
+        app._cleanup()
+    return None
 
 
 async def render_async(

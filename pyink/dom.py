@@ -11,7 +11,7 @@ from typing import Any
 import pyyoga as yoga
 
 
-@dataclass
+@dataclass(eq=False)
 class TextNode:
     """A text content node in the virtual DOM.
 
@@ -28,7 +28,7 @@ class TextNode:
         return "#text"
 
 
-@dataclass
+@dataclass(eq=False)
 class DOMElement:
     """An element node in the virtual DOM, with an attached yoga layout node.
 

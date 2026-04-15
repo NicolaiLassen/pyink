@@ -106,7 +106,6 @@ def smoke_repl(initial_history):
             # Echo as user message
             set_history(lambda h: [*h, {"type": "user", "text": msg}])
 
-            # Fake a streaming response
             if msg == "/spin":
                 set_phase("spinning")
                 set_spinner_text("Thinking...")
@@ -116,37 +115,26 @@ def smoke_repl(initial_history):
             else:
                 import threading
 
-                def _stream_response(message: str) -> None:
+                def _stream(m=msg):
                     import time
-
-                    responses = [
-                        f"Great question! Let me think about '{message}' for a moment. The answer involves several interesting considerations.",
-                        f"Thanks for asking about '{message}'. Here's what I know: it's a fascinating topic with many dimensions to explore.",
-                        f"I'd be happy to help with '{message}'. First, let's break this down into smaller parts we can analyze.",
-                        f"Interesting! '{message}' is something I've thought about. The key insight is that context matters enormously.",
-                        f"Let me process '{message}'. After careful analysis, I believe the most important factor is clarity of intent.",
-                    ]
-                    import random
-                    words = random.choice(responses).split()
+                    fake = "Sure! Here is a response that streams in word by word to test the rendering pipeline."
+                    words = fake.split()
                     set_phase("streaming")
-                    set_stream("")
-                    accumulated = ""
-                    for word in words:
-                        accumulated += (" " if accumulated else "") + word
-                        set_stream(accumulated)
-                        time.sleep(0.05)
-                    # Done streaming — move to history
-                    final = accumulated
-                    set_stream("")
-                    set_phase("idle")
-                    set_history(lambda h: [
-                        *h,
-                        {"type": "response", "ansi": final},
-                    ])
+                    acc = ""
+                    for w in words:
+                        acc += (" " if acc else "") + w
+                        set_stream(acc)
+                        time.sleep(0.06)
+                    # Batch: clear stream + set idle + add to history
+                    final = acc
+                    try:
+                        set_stream("")
+                        set_phase("idle")
+                        set_history(lambda h: [*h, {"type": "response", "ansi": final}])
+                    except Exception:
+                        pass
 
-                threading.Thread(
-                    target=_stream_response, args=(msg,), daemon=True
-                ).start()
+                threading.Thread(target=_stream, daemon=True).start()
             return
 
         # History navigation

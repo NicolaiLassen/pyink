@@ -106,10 +106,12 @@ class Reconciler:
 
     def schedule_update(self, fiber: Fiber) -> None:
         """Called by set_state. Batches updates via the event loop."""
+        if self._loop is None or self._loop.is_closed():
+            return
         fid = id(fiber)
         self._dirty_fibers.add(fid)
         self._dirty_fiber_map[fid] = fiber
-        if not self._render_scheduled and self._loop:
+        if not self._render_scheduled:
             self._render_scheduled = True
             try:
                 self._loop.call_soon_threadsafe(self._flush_updates)
@@ -127,10 +129,16 @@ class Reconciler:
         if not fibers:
             return
 
-        for fiber in fibers:
-            self._render_fiber(fiber, is_inside_text=self._is_fiber_inside_text(fiber))
+        try:
+            for fiber in fibers:
+                self._render_fiber(fiber, is_inside_text=self._is_fiber_inside_text(fiber))
 
-        self._commit()
+            self._commit()
+        except Exception:
+            import sys
+            import traceback
+
+            traceback.print_exc(file=sys.stderr)
 
     # ── Render + Reconcile ──
 
