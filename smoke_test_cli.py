@@ -1000,6 +1000,7 @@ def smoke_repl(banner_ansi="", help_text=""):
     use_mouse()  # Capture scroll events so terminal doesn't shift display
 
     history, set_history = use_state([])
+    scroll_offset, set_scroll_offset = use_state(0)  # items from bottom
     buf, set_buf = use_state("")
     cursor, set_cursor = use_state(0)
     phase, set_phase = use_state("idle")
@@ -1100,6 +1101,22 @@ def smoke_repl(banner_ansi="", help_text=""):
             return
 
         # ── Normal mode ──
+
+        # Scroll: mouse wheel + PgUp/PgDn
+        if key.scroll_up or key.page_up:
+            step = 1 if key.scroll_up else 10
+            set_scroll_offset(lambda o: o + step)
+            return
+        if key.scroll_down or key.page_down:
+            step = 1 if key.scroll_down else 10
+            set_scroll_offset(lambda o: max(0, o - step))
+            return
+
+        # Any typing resets scroll to bottom (re-pin)
+        if scroll_offset > 0:
+            if key.return_key or (ch and not key.ctrl and not key.meta):
+                set_scroll_offset(0)
+
         if key.ctrl and ch == "d":
             app.exit()
             return
@@ -1253,9 +1270,13 @@ def smoke_repl(banner_ansi="", help_text=""):
             show_type_option=sel_show_type.current,
         ))
 
-    # Show only last N items that fit — old items scroll off the top.
-    # This is how open-claude-code works: conversation.slice(-maxMessages).
-    visible_items = all_items[-max_items:] if len(all_items) > max_items else all_items
+    # Visible window: scroll_offset=0 shows latest items (pinned to bottom).
+    # scroll_offset>0 shifts the window back into history.
+    n = len(all_items)
+    clamped_offset = min(scroll_offset, max(0, n - 1))
+    end = n - clamped_offset
+    start = max(0, end - max_items)
+    visible_items = all_items[start:end] if end > start else []
 
     # Messages container: FIXED height (not flex_grow) so yoga doesn't
     # let the inner content push siblings off-screen. Inner Box has
