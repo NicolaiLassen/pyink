@@ -17,6 +17,10 @@ from pyink.input.keys import Key, parse_keypress
 BRACKETED_PASTE_ON = "\x1b[?2004h"
 BRACKETED_PASTE_OFF = "\x1b[?2004l"
 
+# SGR mouse tracking escape sequences
+MOUSE_TRACKING_ON = "\x1b[?1000h\x1b[?1006h"  # basic + SGR extended
+MOUSE_TRACKING_OFF = "\x1b[?1000l\x1b[?1006l"
+
 
 class InputManager:
     """Manages raw mode terminal input and dispatches keypresses to listeners.
@@ -45,6 +49,7 @@ class InputManager:
         self._reading = False
         self._raw_mode_count = 0
         self._bracketed_paste_count = 0
+        self._mouse_tracking_count = 0
         self._parser = create_input_parser()
         self._escape_timer: asyncio.TimerHandle | None = None
         self._escape_timeout = 0.1  # 100ms timeout for standalone ESC
@@ -77,6 +82,7 @@ class InputManager:
         if self._escape_timer:
             self._escape_timer.cancel()
             self._escape_timer = None
+        self.disable_mouse_tracking()
         self.disable_bracketed_paste()
         self.disable_raw_mode()
         self._reading = False
@@ -136,6 +142,26 @@ class InputManager:
         if self._bracketed_paste_count == 0:
             try:
                 sys.stdout.write(BRACKETED_PASTE_OFF)
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+    def enable_mouse_tracking(self) -> None:
+        """Enable SGR mouse tracking (mode 1000 + 1006)."""
+        self._mouse_tracking_count += 1
+        if self._mouse_tracking_count == 1:
+            try:
+                sys.stdout.write(MOUSE_TRACKING_ON)
+                sys.stdout.flush()
+            except Exception:
+                pass
+
+    def disable_mouse_tracking(self) -> None:
+        """Disable SGR mouse tracking."""
+        self._mouse_tracking_count = max(0, self._mouse_tracking_count - 1)
+        if self._mouse_tracking_count == 0:
+            try:
+                sys.stdout.write(MOUSE_TRACKING_OFF)
                 sys.stdout.flush()
             except Exception:
                 pass

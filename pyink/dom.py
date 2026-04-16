@@ -62,6 +62,7 @@ class DOMElement:
     # Layout listeners (dom.ts line 72)
     internal_layout_listeners: set[Callable[[], None]] | None = None
 
+
     def __post_init__(self) -> None:
         if self.yoga_node is None and self.node_name != "ink-virtual-text":
             self.yoga_node = yoga.Node()

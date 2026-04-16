@@ -332,6 +332,9 @@ class Output:
                 offset_y += 1
 
         # Convert grid to string (matching Ink's styledCharsToString + trimEnd)
+        # Ink's output.ts: returns output.length (original grid height),
+        # NOT a trimmed count. Each row is trimEnd()'d but empty rows
+        # are preserved.
         result_lines: list[str] = []
         for row in grid:
             line = _styled_row_to_string(row).rstrip()

@@ -43,6 +43,9 @@ class Key:
     f10: bool = False
     f11: bool = False
     f12: bool = False
+    # Mouse scroll (SGR mouse protocol)
+    scroll_up: bool = False
+    scroll_down: bool = False
 
 
 def parse_keypress(data: bytes) -> tuple[str, Key]:
@@ -198,6 +201,22 @@ def parse_keypress(data: bytes) -> tuple[str, Key]:
     if text in _FKEY_MAP:
         setattr(key, _FKEY_MAP[text], True)
         return ("", key)
+
+    # SGR mouse protocol: \x1b[<button;x;yM or \x1b[<button;x;ym
+    # Button 64 = scroll up, 65 = scroll down
+    if text.startswith("\x1b[<") and (text.endswith("M") or text.endswith("m")):
+        try:
+            params = text[3:-1].split(";")
+            button = int(params[0])
+            if button == 64:
+                key.scroll_up = True
+                return ("", key)
+            if button == 65:
+                key.scroll_down = True
+                return ("", key)
+        except (ValueError, IndexError):
+            pass
+        return ("", key)  # Other mouse events — consume but ignore
 
     # Meta (Alt) + key: ESC followed by a char
     if len(text) == 2 and text[0] == "\x1b" and text[1].isprintable():

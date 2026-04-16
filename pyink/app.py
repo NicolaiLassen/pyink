@@ -1160,6 +1160,8 @@ def render_to_string_sync(
         def remove_paste_listener(self, fn): pass
         def enable_bracketed_paste(self): pass
         def disable_bracketed_paste(self): pass
+        def enable_mouse_tracking(self): pass
+        def disable_mouse_tracking(self): pass
         is_raw_mode_supported = False
         def enable_raw_mode(self): pass
         def disable_raw_mode(self): pass

@@ -26,11 +26,15 @@ def measure_element(node: DOMElement) -> dict[str, int]:
     dict[str, int]
         Dictionary with ``"width"`` and ``"height"`` keys.
     """
+    import math
+
     yn = node.yoga_node
     if yn is None:
         return {"width": 0, "height": 0}
 
+    w = yn.get_computed_width()
+    h = yn.get_computed_height()
     return {
-        "width": int(yn.get_computed_width()),
-        "height": int(yn.get_computed_height()),
+        "width": 0 if math.isnan(w) else int(w),
+        "height": 0 if math.isnan(h) else int(h),
     }

@@ -138,6 +138,14 @@ class Reconciler:
     def mount(self, root_vnode: VNode) -> Fiber:
         """Initial mount. Creates the fiber tree and populates the root DOM."""
         self.root_fiber = self._create_fiber_from_vnode(root_vnode, parent=None)
+
+        # Create DOM node for root host fiber and attach to ink-root.
+        # Without this, _reconcile_children falls into _attach_new_children_dom
+        # (which doesn't preserve child ordering) instead of _sync_children_dom.
+        if not self.root_fiber.is_component:
+            self._create_dom_node(self.root_fiber, is_inside_text=False)
+            append_child(self._root_node, self.root_fiber.dom_node)
+
         self._render_fiber(self.root_fiber, is_inside_text=False)
         self._commit()
         return self.root_fiber
@@ -370,6 +378,12 @@ class Reconciler:
         el = create_node(node_type)
         self._apply_props_to_node(el, fiber.props)
         fiber.dom_node = el
+
+        # Port of React's ref assignment — wire ref.current to the DOM node
+        ref = fiber.props.get("ref")
+        if ref is not None and hasattr(ref, "current"):
+            ref.current = el
+
         return el
 
     def _apply_props_to_node(self, el: DOMElement, props: dict[str, Any]) -> None:
@@ -382,6 +396,8 @@ class Reconciler:
                 continue
             if key == "key":
                 continue
+            if key == "ref":
+                continue  # ref is handled separately, not a style prop
 
             if key == "internal_transform":
                 el.internal_transform = value
@@ -640,6 +656,11 @@ class Reconciler:
         clean up effects and free yoga memory.
         """
         cleanup_effects(fiber)
+
+        # Clear ref on unmount (port of React's ref detachment)
+        ref = fiber.props.get("ref")
+        if ref is not None and hasattr(ref, "current"):
+            ref.current = None
 
         if fiber.dom_node is not None and isinstance(fiber.dom_node, DOMElement):
             if fiber.dom_node.internal_static:

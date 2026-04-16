@@ -6,6 +6,7 @@ from pyink.hooks.use_effect import use_effect, use_layout_effect
 from pyink.hooks.use_focus import use_focus, use_focus_manager
 from pyink.hooks.use_input import use_input
 from pyink.hooks.use_is_screen_reader_enabled import use_is_screen_reader_enabled
+from pyink.hooks.use_mouse import use_mouse
 from pyink.hooks.use_paste import use_paste
 from pyink.hooks.use_ref import use_callback, use_memo, use_ref
 from pyink.hooks.use_state import use_state
@@ -22,6 +23,7 @@ __all__ = [
     "use_callback",
     # Input & interaction
     "use_input",
+    "use_mouse",
     "use_paste",
     "use_focus",
     "use_focus_manager",
