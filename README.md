@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/vadimdemedes/ink/master/media/logo.png" width="200" alt="Ink logo">
+  <img src="https://raw.githubusercontent.com/NicolaiLassen/pyink/main/assets/logo.png" width="200" alt="PyInk logo">
 </p>
 
 <h1 align="center">PyInk</h1>
