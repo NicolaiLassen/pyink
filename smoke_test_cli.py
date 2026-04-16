@@ -33,15 +33,13 @@ from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from enum import Enum
 
-from pyink import Box, Text, component, render
+from pyink import Box, Static, Text, component, render
 from pyink.hooks import (
     use_animation,
     use_app,
     use_input,
-    use_mouse,
     use_ref,
     use_state,
-    use_window_size,
 )
 
 # ── Constants (mirrors orxhestra/cli/ink_app.py) ──
@@ -995,12 +993,9 @@ def _selector_view(prompt_text, options, selected_idx, show_type_option):
 
 
 @component
-def smoke_repl(banner_ansi="", help_text=""):
-    win = use_window_size()
-    use_mouse()  # Capture scroll events so terminal doesn't shift display
+def smoke_repl(initial_history=None):
 
-    history, set_history = use_state([])
-    scroll_offset, set_scroll_offset = use_state(0)  # items from bottom
+    history, set_history = use_state(initial_history or [])
     buf, set_buf = use_state("")
     cursor, set_cursor = use_state(0)
     phase, set_phase = use_state("idle")
@@ -1101,22 +1096,6 @@ def smoke_repl(banner_ansi="", help_text=""):
             return
 
         # ── Normal mode ──
-
-        # Scroll: mouse wheel + PgUp/PgDn
-        if key.scroll_up or key.page_up:
-            step = 1 if key.scroll_up else 10
-            set_scroll_offset(lambda o: o + step)
-            return
-        if key.scroll_down or key.page_down:
-            step = 1 if key.scroll_down else 10
-            set_scroll_offset(lambda o: max(0, o - step))
-            return
-
-        # Any typing resets scroll to bottom (re-pin)
-        if scroll_offset > 0:
-            if key.return_key or (ch and not key.ctrl and not key.meta):
-                set_scroll_offset(0)
-
         if key.ctrl and ch == "d":
             app.exit()
             return
@@ -1226,92 +1205,57 @@ def smoke_repl(banner_ansi="", help_text=""):
     use_input(on_key)
 
     # ── Build component tree ──
-    # Fixed chrome: banner (3 lines) + input (3 lines) = 6 lines.
-    # Messages area gets the rest. Show only last N items that fit
-    # (like open-claude-code's conversation.slice(-maxMessages)).
-    banner_lines = 3  # banner + help + separator
-    input_lines = 3   # separator + prompt + separator
-    available = max(1, win.rows - banner_lines - input_lines)
-    # Each message is ~3 lines on average (user msg + response + summary)
-    max_items = max(1, available)
+    # Claude Code pattern: Static for completed history (terminal scrollback),
+    # dynamic Box below for ephemeral content (redrawn each frame).
+    # Terminal's native scrollbar handles scrolling automatically.
 
-    children = []
+    # Dynamic content (redrawn each frame)
+    dynamic = []
 
-    # Banner — fixed at top
-    if banner_ansi:
-        children.append(Text(banner_ansi))
-    if help_text:
-        children.append(Text(help_text, color=_MUTED, dim=True))
-    children.append(Text(_SEPARATOR, color=_MUTED, dim=True))
-
-    # Build all items (history + ephemeral spinner/stream/selector)
-    all_items = [
-        _history_item(item, i)
-        for i, item in enumerate(history[-200:] if len(history) > 200 else history)
-    ]
-
+    # Spinner
     if phase == "spinning" and spinner_text:
-        all_items.append(
+        dynamic.append(
             Text(f"{frame_char} {spinner_text}", color=_ACCENT),
         )
 
+    # Streaming response
     if phase == "streaming" and stream_buf:
-        all_items.append(Box(
+        dynamic.append(Box(
             Text("\u25cf ", color=_ACCENT),
             Text(stream_buf),
             flex_direction="row",
         ))
 
+    # Selector (approval)
     if sel_active:
-        all_items.append(_selector_view(
+        dynamic.append(_selector_view(
             prompt_text=sel_prompt,
             options=sel_options,
             selected_idx=sel_idx,
             show_type_option=sel_show_type.current,
         ))
 
-    # Visible window: scroll_offset=0 shows latest items (pinned to bottom).
-    # scroll_offset>0 shifts the window back into history.
-    n = len(all_items)
-    clamped_offset = min(scroll_offset, max(0, n - 1))
-    end = n - clamped_offset
-    start = max(0, end - max_items)
-    visible_items = all_items[start:end] if end > start else []
-
-    # Messages container: FIXED height (not flex_grow) so yoga doesn't
-    # let the inner content push siblings off-screen. Inner Box has
-    # flex_shrink=0 so items keep their measured height (no overlap).
-    # overflow=hidden clips at the boundary. Same pattern as openClaude.
-    children.append(
-        Box(
-            Box(*visible_items, flex_direction="column", flex_shrink=0),
-            flex_direction="column",
-            height=available,
-            overflow="hidden",
-        ),
-    )
-
-    # Input area — fixed at bottom
+    # Input area
     before = buf[:cursor]
     char_at = buf[cursor] if cursor < len(buf) else " "
     after = buf[cursor + 1:] if cursor < len(buf) else ""
     prompt_label = "?" if freetext else "\u276f"
 
-    input_children = [
-        Text(_SEPARATOR, color=_MUTED, dim=True),
-        Box(
-            Text(f"  {prompt_label} ", color=_ACCENT, bold=True),
-            Text(before, bold=True),
-            Text(char_at, bold=True, inverse=True),
-            Text(after, bold=True),
-            flex_direction="row",
-        ),
-        Text(_SEPARATOR, color=_MUTED, dim=True),
-    ]
-    children.append(Box(*input_children, flex_direction="column"))
+    dynamic.append(Text(_SEPARATOR, color=_MUTED, dim=True))
+    dynamic.append(Box(
+        Text(f"  {prompt_label} ", color=_ACCENT, bold=True),
+        Text(before, bold=True),
+        Text(char_at, bold=True, inverse=True),
+        Text(after, bold=True),
+        flex_direction="row",
+    ))
+    dynamic.append(Text(_SEPARATOR, color=_MUTED, dim=True))
 
-    # Root Box fills terminal height so flex_grow works correctly
-    return Box(*children, flex_direction="column", height=win.rows)
+    return Box(
+        Static(items=history, render_item=_history_item),
+        Box(*dynamic, flex_direction="column"),
+        flex_direction="column",
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1392,17 +1336,18 @@ def _dispatch_agent(
 
 
 def main():
-    banner = "\x1b[1;34msmoke-test\x1b[0m v1.1.11 \u00b7 pyink rendering pipeline"
-    help_text = (
-        "  /stream /long /tools /error \u2014 test flows \u00b7 "
-        "Ctrl+C interrupt \u00b7 Ctrl+D exit"
-    )
+    initial_history = [
+        {"type": "rich",
+         "ansi": "\x1b[1;34msmoke-test\x1b[0m v1.1.12 \u00b7 pyink rendering pipeline"},
+        {"type": "plain",
+         "ansi": "  /stream /long /tools /error \u2014 test flows \u00b7 "
+                 "Ctrl+C interrupt \u00b7 Ctrl+D exit",
+         "color": _MUTED, "dim": True},
+        {"type": "separator"},
+    ]
 
-    vnode = smoke_repl(
-        banner_ansi=banner,
-        help_text=help_text,
-    )
-    render(vnode, exit_on_ctrl_c=False, max_fps=30, use_alt_screen=True)
+    vnode = smoke_repl(initial_history=initial_history)
+    render(vnode, exit_on_ctrl_c=False, max_fps=30)
 
 
 if __name__ == "__main__":
