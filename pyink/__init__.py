@@ -34,6 +34,16 @@ from pyink.app import Instance, render, render_async, render_to_string_sync
 # Core component decorator
 from pyink.component import component
 
+# High-level components (Ink community packages, built-in here)
+from pyink.components import (
+    ConfirmInput,
+    ProgressBar,
+    SelectInput,
+    SelectItem,
+    Spinner,
+    TextInput,
+)
+
 # Cursor types
 from pyink.cursor_helpers import CursorPosition
 
@@ -76,7 +86,7 @@ from pyink.input.kitty_keyboard import KittyFlagName, kitty_flags, kitty_modifie
 # Utilities
 from pyink.measure_element import measure_element
 
-# Components (matching Ink's exports)
+# Core Ink components
 from pyink.vnode import Box, Newline, Spacer, Static, Text, Transform, VNode
 
 __all__ = [
@@ -95,6 +105,13 @@ __all__ = [
     "Spacer",
     "Newline",
     "VNode",
+    # High-level components
+    "ConfirmInput",
+    "ProgressBar",
+    "SelectInput",
+    "SelectItem",
+    "Spinner",
+    "TextInput",
     # Hooks
     "use_state",
     "use_effect",

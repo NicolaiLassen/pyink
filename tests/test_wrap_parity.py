@@ -15,7 +15,6 @@ from pyink.text_wrap import (
     wrap_text_soft,
 )
 
-
 # ── visible_width ──
 
 
@@ -129,12 +128,12 @@ def test_measure_matches_render_simple():
     output = strip_ansi(
         render_to_string_sync(Box(text, flex_direction="column"), columns=40),
     )
-    rendered_lines = [l for l in output.split("\n") if l.strip()]
+    rendered_lines = [ln for ln in output.split("\n") if ln.strip()]
 
     # Measure directly
     from pyink.text_wrap import wrap_text
     measured = wrap_text("word " * 20, 40, "wrap")
-    measured_nonempty = [l for l in measured if l.strip()]
+    measured_nonempty = [ln for ln in measured if ln.strip()]
 
     assert len(rendered_lines) == len(measured_nonempty), (
         f"render={len(rendered_lines)} measure={len(measured_nonempty)}"
@@ -154,9 +153,9 @@ def test_measure_matches_render_ansi():
                 Box(Text(text), flex_direction="column"), columns=cols,
             ),
         )
-        rendered_lines = [l for l in output.split("\n") if l.strip()]
+        rendered_lines = [ln for ln in output.split("\n") if ln.strip()]
         measured = wrap_text(text, cols, "wrap")
-        measured_nonempty = [l for l in measured if l.strip()]
+        measured_nonempty = [ln for ln in measured if ln.strip()]
 
         assert len(rendered_lines) == len(measured_nonempty), (
             f"cols={cols} render={len(rendered_lines)} "
@@ -175,7 +174,7 @@ def test_no_item_overlap_with_long_text():
     # SENTINEL must appear on its own line (not overlapping long text)
     lines = output.split("\n")
     sentinel_line = next(
-        (i for i, l in enumerate(lines) if "SENTINEL" in l), -1,
+        (i for i, ln in enumerate(lines) if "SENTINEL" in ln), -1,
     )
     assert sentinel_line >= 0
     # The SENTINEL line must contain ONLY "SENTINEL" (no overlap chars)
