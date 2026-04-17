@@ -5,7 +5,6 @@ backgrounds, text with wrapping/truncation, and overflow clipping.
 """
 from __future__ import annotations
 
-import re as _re
 import shutil
 from collections.abc import Callable
 from typing import Any
@@ -13,7 +12,7 @@ from typing import Any
 import pyyoga as yoga
 
 from pyink.dom import DOMElement, TextNode, squash_text_nodes
-from pyink.layout.engine import _wrap_text, compute_layout, visible_width
+from pyink.layout.engine import compute_layout, visible_width
 from pyink.renderer.ansi import style_text
 from pyink.renderer.borders import render_border
 from pyink.renderer.output import Output
@@ -437,139 +436,15 @@ def _collect_text_styles(node: DOMElement) -> dict[str, Any]:
 
 
 def _wrap_text_with_mode(text: str, max_width: int, wrap_mode: str) -> str:
-    """Wrap/truncate text matching Ink's wrapText."""
-    def _apply(fn, text, mw):
-        lines = text.split("\n")
-        return "\n".join(
-            fn(line, mw) if visible_width(line) > mw else line for line in lines
-        )
+    """Wrap/truncate text matching Ink's wrapText.
 
-    if wrap_mode in ("truncate", "truncate-end", "truncate_end"):
-        return _apply(_truncate, text, max_width)
-    elif wrap_mode in ("truncate-start", "truncate_start"):
-        return _apply(_truncate_start, text, max_width)
-    elif wrap_mode in ("truncate-middle", "truncate_middle"):
-        return _apply(_truncate_middle, text, max_width)
-    elif wrap_mode == "hard":
-        return "\n".join(_wrap_text_hard(text, max_width))
-    else:
-        return "\n".join(_wrap_text(text, max_width))
-
-
-# Comprehensive ANSI regex for tokenizing text into (ansi_seq | char) chunks.
-_ANSI_TOKEN_RE = _re.compile(
-    r"(\x1b\[[0-9;:]*[a-zA-Z]"
-    r"|\x1b\[\?[0-9;]*[a-zA-Z]"
-    r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
-    r"|\x1b[NOPc]"
-    r"|\x9b[0-9;:]*[a-zA-Z])"
-)
-
-
-def _ansi_tokenize(text: str) -> list[tuple[str, int]]:
-    """Split text into (chunk, visible_width) pairs.
-
-    ANSI escape sequences get width 0. Visible characters get their
-    display width (2 for CJK wide chars, 1 otherwise).
+    Delegates to ``pyink.text_wrap`` — same code as the measure path,
+    ensuring yoga-allocated height matches rendered line count.
     """
-    result: list[tuple[str, int]] = []
-    last = 0
-    for m in _ANSI_TOKEN_RE.finditer(text):
-        # Plain text before this ANSI sequence
-        start, end = m.start(), m.end()
-        if start > last:
-            for ch in text[last:start]:
-                result.append((ch, _visible_char_width(ch)))
-        # The ANSI sequence itself (zero width)
-        result.append((m.group(0), 0))
-        last = end
-    # Remaining plain text
-    if last < len(text):
-        for ch in text[last:]:
-            result.append((ch, _visible_char_width(ch)))
-    return result
+    from pyink.text_wrap import wrap_text
+    return "\n".join(wrap_text(text, max_width, wrap_mode or "wrap"))
 
 
-def _visible_char_width(ch: str) -> int:
-    """Width of a single visible character."""
-    import unicodedata
-    try:
-        eaw = unicodedata.east_asian_width(ch)
-        return 2 if eaw in ("W", "F") else 1
-    except Exception:
-        return 1
-
-
-def _wrap_text_hard(text: str, max_width: int) -> list[str]:
-    """Hard wrap at exact character position, ANSI-aware."""
-    if max_width <= 0:
-        return [text]
-    lines: list[str] = []
-    for raw_line in text.split("\n"):
-        if not raw_line:
-            lines.append("")
-            continue
-        tokens = _ansi_tokenize(raw_line)
-        current: list[str] = []
-        w = 0
-        for chunk, cw in tokens:
-            if cw == 0:
-                # ANSI sequence — always include, doesn't affect width
-                current.append(chunk)
-            elif w + cw > max_width:
-                lines.append("".join(current))
-                current = [chunk]
-                w = cw
-            else:
-                current.append(chunk)
-                w += cw
-        if current:
-            lines.append("".join(current))
-    return lines if lines else [""]
-
-
-def _truncate(text: str, max_width: int) -> str:
-    """Truncate text at max_width, ANSI-aware."""
-    if max_width <= 0:
-        return ""
-    tokens = _ansi_tokenize(text)
-    result: list[str] = []
-    w = 0
-    for chunk, cw in tokens:
-        if cw == 0:
-            result.append(chunk)
-        elif w + cw > max_width:
-            break
-        else:
-            result.append(chunk)
-            w += cw
-    return "".join(result)
-
-
-def _truncate_start(text: str, max_width: int) -> str:
-    """Truncate from the start, keeping the last max_width columns, ANSI-aware."""
-    if max_width <= 0:
-        return ""
-    tokens = _ansi_tokenize(text)
-    result: list[str] = []
-    w = 0
-    for chunk, cw in reversed(tokens):
-        if cw == 0:
-            result.append(chunk)
-        elif w + cw > max_width:
-            break
-        else:
-            result.append(chunk)
-            w += cw
-    result.reverse()
-    return "".join(result)
-
-
-def _truncate_middle(text: str, max_width: int) -> str:
-    """Truncate from the middle with ellipsis, ANSI-aware."""
-    if max_width <= 3:
-        return _truncate(text, max_width)
-    half = (max_width - 1) // 2
-    start = _truncate(text, half)
-    end = _truncate_start(text, max_width - half - 1)
-    return start + "\u2026" + end
+# Text wrapping/truncation helpers live in pyink.text_wrap — shared
+# with the measure path so yoga-allocated height always matches the
+# rendered line count.

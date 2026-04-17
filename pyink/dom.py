@@ -483,30 +483,22 @@ def _measure_text(text: str) -> tuple[float, float]:
 
 
 def _widest_line(text: str) -> int:
-    """Get the visible width of the widest line in text."""
-    import re
+    """Get the visible width of the widest line in text.
 
-    ansi_re = re.compile(
-        r"\x1b\[[0-9;:]*[a-zA-Z]"
-        r"|\x1b\[\?[0-9;]*[a-zA-Z]"
-        r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)"
-        r"|\x1b[NOPc]"
-        r"|\x9b[0-9;:]*[a-zA-Z]"
-    )
-    max_width = 0
-    for line in text.split("\n"):
-        clean = ansi_re.sub("", line)
-        w = 0
-        try:
-            import unicodedata
+    Parameters
+    ----------
+    text : str
+        Text that may contain ANSI escape codes and multiple lines.
 
-            for ch in clean:
-                eaw = unicodedata.east_asian_width(ch)
-                w += 2 if eaw in ("W", "F") else 1
-        except Exception:
-            w = len(clean)
-        max_width = max(max_width, w)
-    return max_width
+    Returns
+    -------
+    int
+        Visible width (in terminal columns) of the widest line,
+        accounting for CJK wide characters.
+    """
+    from pyink.text_wrap import visible_width as _vw
+
+    return max((_vw(line) for line in text.split("\n")), default=0)
 
 
 def _wrap_text_for_measure(
@@ -514,54 +506,33 @@ def _wrap_text_for_measure(
 ) -> str:
     """Wrap text for measurement purposes.
 
-    Simplified wrapper matching Ink's wrapText usage in measureTextNode.
+    Delegates to ``pyink.text_wrap`` so the measure path and the render
+    path use the same wrapping logic. Without this sharing, yoga may
+    allocate N lines but the renderer produces N+1, causing sibling
+    items to overlap.
 
     Parameters
     ----------
     text : str
         The text to wrap.
     max_width : float
-        Maximum width.
+        Maximum visible width per line. ``0`` or negative means no limit.
     wrap_type : str
         The wrap mode (``"wrap"``, ``"hard"``, ``"truncate"``, etc.).
 
     Returns
     -------
     str
-        The wrapped text.
+        The wrapped text, with ``\\n`` separating wrapped lines.
     """
+    from pyink.text_wrap import wrap_text
+
     max_w = int(max_width) if max_width > 0 else 999
 
-    if wrap_type in ("truncate", "truncate-middle", "truncate-start"):
+    if wrap_type in ("truncate", "truncate-middle", "truncate-start",
+                     "truncate-end", "truncate_middle", "truncate_start",
+                     "truncate_end"):
         # Truncation doesn't change height for measurement
         return text
 
-    lines: list[str] = []
-    for raw_line in text.split("\n"):
-        if not raw_line:
-            lines.append("")
-            continue
-
-        if wrap_type == "hard":
-            # Hard wrap: break at exact width, no word boundaries
-            remaining = raw_line
-            while _widest_line(remaining) > max_w:
-                lines.append(remaining[:max_w])
-                remaining = remaining[max_w:]
-            lines.append(remaining)
-        else:
-            # Soft wrap: respect word boundaries
-            words = raw_line.split(" ")
-            current = ""
-            for word in words:
-                if not current:
-                    current = word
-                elif _widest_line(current + " " + word) <= max_w:
-                    current += " " + word
-                else:
-                    lines.append(current)
-                    current = word
-            if current:
-                lines.append(current)
-
-    return "\n".join(lines) if lines else ""
+    return "\n".join(wrap_text(text, max_w, wrap_type or "wrap"))
