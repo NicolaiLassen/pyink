@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke test — 1:1 copy of the orxhestra CLI rendering pipeline.
 
-Run with: uv run python smoke_test_cli.py
+Run with: uv run python examples/orx_cli.py
 
 Reproduces the exact orx REPL architecture with fake events, fake tools,
 and fake async delays so pyink rendering can be debugged without

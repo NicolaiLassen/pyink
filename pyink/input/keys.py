@@ -131,41 +131,35 @@ def parse_keypress(data: bytes) -> tuple[str, Key]:
         key.left_arrow = True
         return ("", key)
 
-    # Shift+arrow keys
-    if text == "\x1b[1;2A":
-        key.up_arrow = True
-        key.shift = True
-        return ("", key)
-    if text == "\x1b[1;2B":
-        key.down_arrow = True
-        key.shift = True
-        return ("", key)
-    if text == "\x1b[1;2C":
-        key.right_arrow = True
-        key.shift = True
-        return ("", key)
-    if text == "\x1b[1;2D":
-        key.left_arrow = True
-        key.shift = True
-        return ("", key)
-
-    # Ctrl+arrow keys
-    if text == "\x1b[1;5A":
-        key.up_arrow = True
-        key.ctrl = True
-        return ("", key)
-    if text == "\x1b[1;5B":
-        key.down_arrow = True
-        key.ctrl = True
-        return ("", key)
-    if text == "\x1b[1;5C":
-        key.right_arrow = True
-        key.ctrl = True
-        return ("", key)
-    if text == "\x1b[1;5D":
-        key.left_arrow = True
-        key.ctrl = True
-        return ("", key)
+    # Modifier + arrow/home/end: \x1b[1;Nd where N encodes modifiers
+    # and d is A/B/C/D/H/F. xterm modifier encoding:
+    # flags = N-1 where bit 0 = Shift, bit 1 = Alt, bit 2 = Ctrl.
+    #   2=Shift, 3=Alt, 4=Alt+Shift, 5=Ctrl, 6=Ctrl+Shift,
+    #   7=Ctrl+Alt, 8=Ctrl+Alt+Shift
+    if len(text) == 6 and text.startswith("\x1b[1;") and text[5] in "ABCDHF":
+        try:
+            mod = int(text[4])
+        except ValueError:
+            mod = 0
+        if 2 <= mod <= 8:
+            flags = mod - 1
+            key.shift = bool(flags & 1)
+            key.meta = bool(flags & 2)  # Alt = meta
+            key.ctrl = bool(flags & 4)
+            final = text[5]
+            if final == "A":
+                key.up_arrow = True
+            elif final == "B":
+                key.down_arrow = True
+            elif final == "C":
+                key.right_arrow = True
+            elif final == "D":
+                key.left_arrow = True
+            elif final == "H":
+                key.home = True
+            elif final == "F":
+                key.end = True
+            return ("", key)
 
     # Page Up/Down
     if text == "\x1b[5~":
