@@ -97,15 +97,9 @@ def parse_keypress(data: bytes) -> tuple[str, Key]:
         key.shift = True
         return ("", key)
 
-    # Return/Enter. In raw mode, plain Enter sends \r and Ctrl+J sends
-    # \n — the same key.return_key applies, but we also set key.ctrl
-    # for \n so callers can disambiguate (Ctrl+J is the universal
-    # multi-line shortcut: works in any terminal, no protocol or
-    # config needed).
+    # Return/Enter
     if text == "\r" or text == "\n":
         key.return_key = True
-        if text == "\n":
-            key.ctrl = True
         return ("", key)
 
     # Backspace
